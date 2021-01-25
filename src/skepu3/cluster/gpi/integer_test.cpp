@@ -13,12 +13,6 @@
 
 int main(){
 
-	// Constructor: Matrix(M, N initial value)
-
-	// The Matrix interface will need to be tweaked to match SkePU's
-
-
-
 
   auto square = skepu::Map<1>([](int a) int {
     return a * a;
@@ -41,8 +35,11 @@ int main(){
 	if(run_test == 0){
 		// Test repeated use of the same container
 
+		// Constructor: Matrix(M, N initial value)
 		skepu::Matrix<int> m2{4,4,2};
 		skepu::Matrix<int> m22{4,4,2};
+
+		// The Matrix interface will need to be tweaked to match SkePU's
 
 		// 2 * 2
 		square(m2, m2);
