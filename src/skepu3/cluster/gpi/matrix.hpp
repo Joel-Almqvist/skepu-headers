@@ -375,7 +375,6 @@ namespace skepu{
 
 
     T get(int index){
-
       if(index >= start_i && index <= end_i){
         // The value is local
         return ((T*) cont_seg_ptr)[index - start_i];
@@ -394,7 +393,7 @@ namespace skepu{
 
         gaspi_read_notify(
           segment_id,
-          0,
+          comm_offset,
           dest_rank,
           segment_id + dest_rank - rank, // remote segment id
           sizeof(T) * (index - step * dest_rank), // Remote offset
