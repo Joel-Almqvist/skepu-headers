@@ -435,6 +435,29 @@ namespace skepu{
         }
         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
       }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      if(rank == 0){
+        printf("\n");
+      }
+    }
+
+
+    template<typename Lambda>
+    void print(Lambda lamb){
+      for(int i = 0; i < nr_nodes; i++){
+        if(i == rank){
+          for(int j = 0; j < local_size; j++){
+            std::cout << lamb(((T*) cont_seg_ptr)[j]) << ",  ";
+          }
+          std::cout << std::endl;
+        }
+        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      if(rank == 0){
+        printf("\n");
+      }
     }
 
 
