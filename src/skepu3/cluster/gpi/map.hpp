@@ -199,7 +199,7 @@ namespace skepu{
         T* store_at = (T*) dest_cont.cont_seg_ptr;
         T* comm_ptr = (T*) dest_cont.comm_seg_ptr;
 
-        #pragma omp_parallel parallel
+        #pragma omp parallel
         {
           for(int i = omp_get_thread_num(); i < transfer_size;
           i = i + omp_get_num_threads()){
@@ -333,7 +333,7 @@ namespace skepu{
 
 
          // Do the local work
-         #pragma omp_parallel parallel shared(dest_cont, dest_ptr, from_ptr, \
+         #pragma omp parallel shared(dest_cont, dest_ptr, from_ptr, \
            from, lowest_local_i, highest_local_i)
          {
 
@@ -469,7 +469,7 @@ namespace skepu{
           int highest_local_i = std::min({cont1.end_i, cont2.end_i, dest_cont.end_i});
 
           // Do the work which does not need remote communication
-          #pragma omp_parallel parallel shared(dest_cont, cont2, cont1, lowest_local_i, highest_local_i)
+          #pragma omp parallel shared(dest_cont, cont2, cont1, lowest_local_i, highest_local_i)
           {
 
             for(int i = lowest_local_i + omp_get_thread_num();
