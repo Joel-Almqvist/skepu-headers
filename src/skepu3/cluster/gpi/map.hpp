@@ -466,6 +466,7 @@ namespace skepu{
           int lowest_local_i = std::max({cont1.start_i, cont2.start_i, dest_cont.start_i});
           int highest_local_i = std::min({cont1.end_i, cont2.end_i, dest_cont.end_i});
 
+
           // Do the work which does not need remote communication
           #pragma omp parallel shared(dest_cont, cont2, cont1, lowest_local_i, highest_local_i)
           {
@@ -547,10 +548,10 @@ namespace skepu{
              dest_cont.wait_ranks.push_back(i);
          }
 
+         // TODO This wait should be done at the start of Map() instead
+         // since we are waiting unnecesarily currently. Add this after variadic
          dest_cont.wait_for_vclocks(dest_cont.op_nr);
-
          dest_cont.vclock[dest_cont.rank] = ++dest_cont.op_nr;
-
 
      } // end of apply_on_unique_conts
 

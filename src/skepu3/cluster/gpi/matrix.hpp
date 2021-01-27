@@ -178,24 +178,36 @@ namespace skepu{
           return;
         }
 
-
       unsigned long remote_offset = dest_rank == nr_nodes - 1 ?
         last_partition_vclock_offset :
         norm_vclock_offset;
 
 
-      gaspi_read_notify(
+      // gaspi_read_notify(
+      //   segment_id, // local seg
+      //   vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
+      //   dest_rank,
+      //   dest_seg_id,
+      //   remote_offset,
+      //   sizeof(unsigned long) * nr_nodes,
+      //   2 * nr_nodes + 1, // notif id
+      //   queue,
+      //   GASPI_BLOCK
+      // );
+
+      gaspi_read(
         segment_id, // local seg
         vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
         dest_rank,
         dest_seg_id,
         remote_offset,
         sizeof(unsigned long) * nr_nodes,
-        2 * nr_nodes + 1, // notif id
         queue,
         GASPI_BLOCK
       );
 
+      gaspi_wait(queue, GASPI_BLOCK);
+      /*
       gaspi_notification_t notify_val = 0;
       gaspi_notification_id_t first_id;
 
@@ -206,8 +218,8 @@ namespace skepu{
         &first_id,
         GASPI_BLOCK
       );
-
       gaspi_notify_reset(segment_id, first_id, &notify_val);
+      */
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
@@ -366,9 +378,33 @@ namespace skepu{
     }
 
 
+    // Gets a specific value from the Matrix. Either fetch the remote value
+    // or wait untill all remotes have read our local value, then return.
+    //
+    // TODO A distributed distribution scheme of this value should be implemented.
+    // currently we are likely to overload a single node
     T get(int index){
       if(index >= start_i && index <= end_i){
-        // The value is local
+        // The value is local, sleep until we have distributed the value
+
+        gaspi_notification_id_t notify_id;
+        gaspi_notification_t notify_val;
+
+        // Wait for notification from all nodes
+        for(int i = 0; i < nr_nodes - 1; ++i){
+
+          // Note that we wait for notifs from start to start + #notifs - 1
+          gaspi_notify_waitsome(
+            segment_id,
+            notif_ctr * nr_nodes, // notif start
+            nr_nodes, // number of notifs
+            &notify_id,
+            GASPI_BLOCK
+          );
+          gaspi_notify_reset(segment_id, notify_id, &notify_val);
+        }
+
+        ++notif_ctr;
         return ((T*) cont_seg_ptr)[index - start_i];
       }
       else{
@@ -378,39 +414,41 @@ namespace skepu{
           dest_rank = nr_nodes - 1;
         }
 
+        // TODO Possible optimization to only wait for last Write Op
+
+        // Wait until the rank is on the current OP
         wait_ranks.clear();
         wait_ranks.push_back(dest_rank);
         wait_for_vclocks(op_nr);
 
-        gaspi_read_notify(
+        gaspi_read(
           segment_id,
           comm_offset,
           dest_rank,
           segment_id + dest_rank - rank, // remote segment id
           sizeof(T) * (index - step * dest_rank), // Remote offset
           sizeof(T),
-          rank, // Notification id
           queue,
           GASPI_BLOCK
         );
 
-        gaspi_notification_id_t notify_id;
-        gaspi_notification_t notify_val = 0;
-        gaspi_notify_waitsome(
-          segment_id,
-          rank,
-          1,
-          &notify_id,
+        gaspi_notify(
+          segment_id + dest_rank - rank, // remote segment
+          dest_rank,
+          //notif_ctr * nr_nodes + rank, // notif id
+          notif_ctr * nr_nodes + 1, // notif id
+          13, // notif val, not used
+          queue,
           GASPI_BLOCK
         );
-        gaspi_notify_reset(segment_id, notify_id, &notify_val);
+
+        ++notif_ctr;
+        gaspi_wait(queue, GASPI_BLOCK);
 
         return ((T*) comm_seg_ptr)[0];
       }
       vclock[rank] = ++op_nr;
     }
-
-
 
 
 
