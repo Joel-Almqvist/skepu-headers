@@ -182,19 +182,6 @@ namespace skepu{
         last_partition_vclock_offset :
         norm_vclock_offset;
 
-
-      // gaspi_read_notify(
-      //   segment_id, // local seg
-      //   vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
-      //   dest_rank,
-      //   dest_seg_id,
-      //   remote_offset,
-      //   sizeof(unsigned long) * nr_nodes,
-      //   2 * nr_nodes + 1, // notif id
-      //   queue,
-      //   GASPI_BLOCK
-      // );
-
       gaspi_read(
         segment_id, // local seg
         vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
@@ -207,19 +194,6 @@ namespace skepu{
       );
 
       gaspi_wait(queue, GASPI_BLOCK);
-      /*
-      gaspi_notification_t notify_val = 0;
-      gaspi_notification_id_t first_id;
-
-      gaspi_notify_waitsome(
-        segment_id,
-        2 * nr_nodes + 1, // notif begin
-        1, // number of notif
-        &first_id,
-        GASPI_BLOCK
-      );
-      gaspi_notify_reset(segment_id, first_id, &notify_val);
-      */
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
