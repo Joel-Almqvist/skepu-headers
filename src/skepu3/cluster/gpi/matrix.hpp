@@ -117,14 +117,11 @@ namespace skepu{
 
 
 
-
-
-
     // Puts all elements from start to end (these are global indeces) into
     // the given GASPI segment. Many to one communication pattern
     //
-    // TODO Change this function to be read based, it is currently very
-    // counter intuitive to use
+    // WARNING This function is deprecated and will be removed eventually.
+    // It has been replaced by read_range since due to being more intuitive.
     void get_range(
       int start,
       int end,
@@ -176,13 +173,19 @@ namespace skepu{
       int dest_seg_id
       ){
 
+        if(dest_rank == rank && dest_seg_id == segment_id){
+          // Reading our own vclock does nothing
+          return;
+        }
+
+
       unsigned long remote_offset = dest_rank == nr_nodes - 1 ?
         last_partition_vclock_offset :
         norm_vclock_offset;
 
-      //
+
       gaspi_read_notify(
-        segment_id,
+        segment_id, // local seg
         vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
         dest_rank,
         dest_seg_id,
@@ -214,55 +217,44 @@ namespace skepu{
           vclock[i] = std::max(vclock[i + nr_nodes], vclock[i]);
         }
       }
-
-      if(false && rank == 1){
-        std::cout << "Rank " << rank <<  " seg_id "<< (int) segment_id << " new vlock: ";
-        for(int i = 0; i < nr_nodes; i++){
-          std::cout << vclock[i] << ", ";
-        }
-        std::cout << std::endl;
-      }
     };
 
 
+    void wait_for_vclocks(int wait_val){
+      int curr_rank;
+      int curr_seg_id;
+      const int min_seg_id = segment_id - rank;
+
+      for(int i = 0; i < wait_ranks.size(); i++){
+        curr_rank = wait_ranks[i];
+        curr_seg_id = min_seg_id + curr_rank;
+
+        if(curr_rank == rank || vclock[curr_rank] >= wait_val){
+          continue;
+        }
+
+        while(true){
+          get_vclock(curr_rank, curr_seg_id);
+          if(vclock[curr_rank] >= wait_val){
+            break;
+          }
+          else{
+            // Sleep
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          }
+        }
+      }
+    };
 
 
   public:
 
     using value_type = T;
 
-
     bool operator==(Matrix<T>& that){
       return this == &that;
     }
 
-
-        //TODO Make this private possibly?
-        void wait_for_vclocks(int wait_val){
-          int curr_rank;
-          int curr_seg_id;
-          const int min_seg_id = segment_id - rank;
-
-          for(int i = 0; i < wait_ranks.size(); i++){
-            curr_rank = wait_ranks[i];
-            curr_seg_id = min_seg_id + curr_rank;
-
-            if(curr_rank == rank || vclock[curr_rank] >= wait_val){
-              continue;
-            }
-
-            while(true){
-              get_vclock(curr_rank, curr_seg_id);
-              if(vclock[curr_rank] >= wait_val){
-                break;
-              }
-              else{
-                // Sleep
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-              }
-            }
-          }
-        };
 
 
 
@@ -390,7 +382,6 @@ namespace skepu{
         wait_ranks.push_back(dest_rank);
         wait_for_vclocks(op_nr);
 
-
         gaspi_read_notify(
           segment_id,
           comm_offset,
@@ -402,7 +393,6 @@ namespace skepu{
           queue,
           GASPI_BLOCK
         );
-
 
         gaspi_notification_id_t notify_id;
         gaspi_notification_t notify_val = 0;

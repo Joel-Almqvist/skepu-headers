@@ -90,7 +90,6 @@ namespace skepu{
           apply_rank_unique(dest_cont, cont1, cont2, rank, orphans, false);
 
           // TODO Reevaluate if this case is handled correctly
-          printf("Recursion by %d\n", dest_cont.rank);
           c1_to = overlap_lower_bound - 1;
           c2_to = overlap_lower_bound - 1;
         }
@@ -120,7 +119,6 @@ namespace skepu{
       else{
         // TODO Reevaluate this case
         // There is a full overlap and the work has already been done
-        printf("Full overlap for %d with remote %d\n", dest_cont.rank, rank);
         return;
       }
 
