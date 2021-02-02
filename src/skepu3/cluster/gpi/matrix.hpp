@@ -76,7 +76,8 @@ namespace skepu{
       int start,
       int end,
       int local_offset,
-      Matrix& dest_cont
+      Matrix& dest_cont,
+      bool no_wait = false
       ){
         int lowest_rank = dest_cont.get_owner(start);
         int highest_rank = dest_cont.get_owner(end);
@@ -107,12 +108,14 @@ namespace skepu{
             dest_cont.segment_id - rank + i,
             sizeof(T) * (ranks_first_elem % dest_cont.step), // remote offset
             sizeof(T) * nr_elems_to_send, // size
-            queue,
+            dest_cont.queue,
             GASPI_BLOCK
           );
           sent_elems += nr_elems_to_send;
         }
-        gaspi_wait(queue, GASPI_BLOCK);
+        if(!no_wait){
+          gaspi_wait(dest_cont.queue, GASPI_BLOCK);
+        }
     }
 
 
@@ -231,6 +234,40 @@ namespace skepu{
         }
       }
     };
+
+
+    template<typename First, typename ... Rest>
+    void build_buffer(First& first, Rest&... rest){
+      build_buffer(first);
+      build_buffer(rest...);
+    }
+
+    template<typename Cont>
+    void build_buffer(Cont& cont){
+
+      int lowest_shared_i = std::max(cont.start_i, start_i);
+      int highest_shared_i = std::min(cont.end_i, end_i);
+
+      int transfered_obj = 0;
+
+
+      if(cont.start_i > start_i){
+        // transfer up to our start_i
+
+        transfered_obj = cont.start_i - start_i;
+
+        // read range is inclusive
+        read_range(start_i, cont.start_i - 1, 0, cont, true);
+
+      }
+
+      if(cont.end_i < end_i){
+        // transfer up to our end_i
+
+        read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, true);
+      }
+
+    }
 
 
   public:

@@ -23,6 +23,7 @@ namespace skepu{
     Function func;
 
 
+
     /* This is a help function for Map() with two arguments
     *
     * Fetches the values whithin the range [dest_cont.start_i, dest_cont.end_i]
@@ -300,7 +301,46 @@ namespace skepu{
 
 
 
+    template<int ctr, typename Dest, typename Tup, typename Curr, typename... Rest>
+    void build_tuple(int i, Dest& dest, Tup& tup, Curr& curr, Rest&... rest){
+
+      build_tuple<ctr>(i, dest, tup, curr);
+      build_tuple<ctr + 1>(i, dest, tup, rest...);
+
+    }
+
+    template<int ctr, typename Dest, typename Tup, typename Curr>
+    void build_tuple(int i, Dest& dest, Tup& tup, Curr& curr){
+
+      using T = typename Curr::value_type;
+      T* val_ptr = (T*) curr.cont_seg_ptr;
+      T* comm_ptr = (T*) curr.comm_seg_ptr;
+
+      if(i >= curr.start_i && i <= curr.end_i){
+        std::get<ctr>(tup) = val_ptr[i];
+      }
+
+      else if(i < curr.start_i){
+        int offset = i - dest.start_i;
+
+        gaspi_wait(curr.queue, GASPI_BLOCK);
+        std::get<ctr>(tup) = comm_ptr[offset];
+      }
+      else{
+        // i > curr.end_i
+        int offset = std::max(curr.start_i - dest.start_i, 0);
+
+        // If curr.end_i < dest.end_i then we have transfered elements
+        offset += std::max(dest.end_i - curr.end_i, 0);
+        gaspi_wait(curr.queue, GASPI_BLOCK);
+        std::get<ctr>(tup) = comm_ptr[offset];
+      }
+    }
+
+
+
   public:
+
 
     Map1D(Function func) : func{func} {};
 
@@ -562,14 +602,82 @@ namespace skepu{
 
      // Need to be implemented
      void setReduceMode(){};
+
+
+     template<typename DestCont, typename ... Conts>
+      auto variadic(DestCont& dest_cont, Conts&... conts) ->
+      decltype(
+        std::declval<typename DestCont::is_skepu_container>(),
+
+        // Check that the lambda takes two arguments
+        //std::declval<Function>()(std::declval<typename DestCont::value_type>(),
+        //std::declval<typename DestCont::value_type>()),
+        std::declval<void>()){
+
+          using T = typename DestCont::value_type;
+          using tup_type = _gpi::tuple_of<nr_args, T>;
+          //tup_type tup = std::make_tuple(4, 3);
+          //_gpi::dummy<0, true>::exec(func, tup);
+
+          /*
+          parallel:
+
+          for every index
+            create tuple
+            apply func
+
+          I for kan vi behöva:
+          1 - vänta på remote rank
+          2 - överföra information ifrån remote
+          3 - undersöka om datan är lokal och ej behöver överföras
+          */
+          const int N = 1 + sizeof...(Conts);
+          const int buffer_size = DestCont::COMM_BUFFER_NR_ELEMS / N;
+
+
+          // No default constructor creates issues
+          auto conts_tup = std::make_tuple(&conts...);
+
+          dest_cont.build_buffer(conts...);
+
+          std::mutex vlock;
+
+
+          #pragma omp parallel
+          {
+            int glob_i = dest_cont.start_i;
+            T* dest_ptr = (T*) dest_cont.cont_seg_ptr;
+            tup_type tup{};
+
+            for(int i = omp_get_thread_num(); i < dest_cont.local_size;
+            i = i + omp_get_num_threads()){
+              ++glob_i;
+              build_tuple<0>(glob_i, dest_cont, tup, dest_cont, conts...);
+              //dest_ptr[i] = 4;
+              //tup = tup_type{1,1};
+              dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
+
+            }
+        }
+      }
   };
+
 
 
   // Template deduction for classes are not allowed in c++11
   // This solves this problem
   template<int nr_args, typename Function>
-  Map1D<Function, nr_args> Map(Function func){
-    return Map1D<Function, nr_args>{func};
+  auto Map(Function func) ->
+    decltype(
+      std::declval<
+        // TODO se till att vi inte returnerar med värde
+        typename std::remove_reference<Map1D<Function, nr_args>>::type
+      >()
+    )
+  {
+
+    //return Map1D<Function, nr_args>{func};
+    return std::move(Map1D<Function, nr_args>{func});
   }
 
 
