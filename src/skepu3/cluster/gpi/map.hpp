@@ -317,7 +317,7 @@ namespace skepu{
       T* comm_ptr = (T*) curr.comm_seg_ptr;
 
       if(i >= curr.start_i && i <= curr.end_i){
-        std::get<ctr>(tup) = val_ptr[i];
+        std::get<ctr>(tup) = val_ptr[i - curr.start_i];
       }
 
       else if(i < curr.start_i){
@@ -609,54 +609,33 @@ namespace skepu{
       decltype(
         std::declval<typename DestCont::is_skepu_container>(),
 
-        // Check that the lambda takes two arguments
-        //std::declval<Function>()(std::declval<typename DestCont::value_type>(),
-        //std::declval<typename DestCont::value_type>()),
         std::declval<void>()){
 
           using T = typename DestCont::value_type;
           using tup_type = _gpi::tuple_of<nr_args, T>;
-          //tup_type tup = std::make_tuple(4, 3);
-          //_gpi::dummy<0, true>::exec(func, tup);
 
-          /*
-          parallel:
+          static_assert(nr_args -1 == sizeof...(Conts), "Wrong number of arguments");
+          assert(DestCont::smallest(dest_cont, conts...) >= dest_cont.global_size);
 
-          for every index
-            create tuple
-            apply func
 
-          I for kan vi behöva:
-          1 - vänta på remote rank
-          2 - överföra information ifrån remote
-          3 - undersöka om datan är lokal och ej behöver överföras
-          */
           const int N = 1 + sizeof...(Conts);
           const int buffer_size = DestCont::COMM_BUFFER_NR_ELEMS / N;
 
-
-          // No default constructor creates issues
-          auto conts_tup = std::make_tuple(&conts...);
-
-          dest_cont.build_buffer(conts...);
-
-          std::mutex vlock;
-
+          dest_cont.build_buffer(dest_cont, conts...);
 
           #pragma omp parallel
           {
-            int glob_i = dest_cont.start_i;
+            int glob_i;
             T* dest_ptr = (T*) dest_cont.cont_seg_ptr;
             tup_type tup{};
 
             for(int i = omp_get_thread_num(); i < dest_cont.local_size;
             i = i + omp_get_num_threads()){
-              ++glob_i;
-              build_tuple<0>(glob_i, dest_cont, tup, dest_cont, conts...);
-              //dest_ptr[i] = 4;
-              //tup = tup_type{1,1};
-              dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
+              glob_i = i + dest_cont.start_i;
 
+              // The template arg is used to traverse the tupel starting at 0
+              build_tuple<0>(glob_i, dest_cont, tup, dest_cont, conts...);
+              dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
             }
         }
       }
@@ -670,13 +649,10 @@ namespace skepu{
   auto Map(Function func) ->
     decltype(
       std::declval<
-        // TODO se till att vi inte returnerar med värde
         typename std::remove_reference<Map1D<Function, nr_args>>::type
       >()
     )
   {
-
-    //return Map1D<Function, nr_args>{func};
     return std::move(Map1D<Function, nr_args>{func});
   }
 

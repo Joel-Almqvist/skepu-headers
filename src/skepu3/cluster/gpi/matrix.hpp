@@ -245,28 +245,35 @@ namespace skepu{
     template<typename Cont>
     void build_buffer(Cont& cont){
 
-      int lowest_shared_i = std::max(cont.start_i, start_i);
-      int highest_shared_i = std::min(cont.end_i, end_i);
-
       int transfered_obj = 0;
-
 
       if(cont.start_i > start_i){
         // transfer up to our start_i
-
         transfered_obj = cont.start_i - start_i;
 
         // read range is inclusive
-        read_range(start_i, cont.start_i - 1, 0, cont, true);
-
+        cont.read_range(start_i, cont.start_i - 1, 0, cont, true);
       }
 
       if(cont.end_i < end_i){
         // transfer up to our end_i
-
-        read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, true);
+        cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, true);
       }
+    }
 
+    template<typename First, typename ... Rest>
+    static long smallest(First& first, Rest&... rest){
+      smallest(first.global_size, rest...);
+    }
+
+    template<typename First, typename ... Rest>
+    static long smallest(long i, First& first, Rest&... rest){
+      smallest(std::min(first.global_size, i), rest...);
+    }
+
+    template<typename First>
+    static long smallest(long i, First& first){
+      return std::min(first.global_size, i);
     }
 
 
