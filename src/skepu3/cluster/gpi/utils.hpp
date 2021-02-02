@@ -45,8 +45,8 @@ namespace skepu::_gpi{
   struct dummy<ctr, true> {
 
       template <typename Func, typename...Args, typename... Exp>
-      static auto exec(Func func, std::tuple<Args...> tup, Exp... exp)
-      -> decltype(std::get<0>(tup))
+      static auto exec(Func func, std::tuple<Args...>& tup, Exp&... exp)
+      -> typename std::remove_reference<decltype(std::get<0>(tup))>::type
        {
 
         const bool not_done = ctr < sizeof...(Args) - 1;
@@ -58,8 +58,8 @@ namespace skepu::_gpi{
   struct dummy<ctr, false> {
 
       template<typename Func, typename Tup, typename...Exp>
-      static auto exec(Func func, Tup tup, Exp... exp)
-      -> decltype(std::get<0>(tup))
+      static auto exec(Func func, Tup& tup, Exp&... exp)
+      -> typename std::remove_reference<decltype(std::get<0>(tup))>::type
       {
         func(exp...);
         }
