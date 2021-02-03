@@ -251,12 +251,32 @@ namespace skepu{
         // transfer up to our start_i
         transfered_obj = cont.start_i - start_i;
 
+
+        int first_owner = cont.get_owner(start_i);
+        wait_ranks.clear();
+
+        for(int i = first_owner; i < cont.rank; i++){
+          wait_ranks.push_back(i);
+        }
+        wait_for_vclocks(op_nr);
+
         // read range is inclusive
         cont.read_range(start_i, cont.start_i - 1, 0, cont, true);
       }
 
       if(cont.end_i < end_i){
         // transfer up to our end_i
+
+
+        int last_owner = cont.get_owner(end_i);
+        wait_ranks.clear();
+
+        for(int i = cont.rank + 1; i < last_owner; i++){
+          wait_ranks.push_back(i);
+        }
+        wait_for_vclocks(op_nr);
+
+
         cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, true);
       }
     }

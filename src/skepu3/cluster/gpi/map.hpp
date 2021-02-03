@@ -302,26 +302,69 @@ namespace skepu{
 
 
     template<int ctr, typename Dest, typename Tup, typename Curr, typename... Rest>
-    void build_tuple(int i, Dest& dest, Tup& tup, Curr& curr, Rest&... rest){
+    void build_tuple(int& tup_flag, int i, bool local_only, Dest& dest,
+       Tup& tup, Curr& curr, Rest&... rest){
 
-      build_tuple<ctr>(i, dest, tup, curr);
-      build_tuple<ctr + 1>(i, dest, tup, rest...);
+      if(local_only){
+        build_tuple_local<ctr>(tup_flag, i, dest, tup, curr);
 
+        // Early break if the tuple need a remote value
+        if(tup_flag != -1){
+          build_tuple<ctr + 1>(tup_flag, i, local_only, dest, tup, rest...);
+        }
+      }
+
+      else{
+        build_tuple_remote<ctr>(tup_flag, i, dest, tup, curr);
+
+        // No early break possible for remote-valued tuples
+        build_tuple<ctr + 1>(tup_flag, i, local_only, dest, tup, rest...);
+      }
     }
 
     template<int ctr, typename Dest, typename Tup, typename Curr>
-    void build_tuple(int i, Dest& dest, Tup& tup, Curr& curr){
+    void build_tuple(int& tup_flag, int i, bool local_only, Dest& dest,
+       Tup& tup, Curr& curr){
+         if(local_only){
+           build_tuple_local<ctr>(tup_flag, i, dest, tup, curr);
+         }
+         else{
+           build_tuple_remote<ctr>(tup_flag, i, dest, tup, curr);
+         }
+    }
 
+    // Adds a local value to the tuple or indicate error
+    template<int ctr, typename Dest, typename Tup, typename Curr>
+    void build_tuple_local(int& tup_flag, int i, Dest& dest, Tup& tup, Curr& curr){
+      using T = typename Curr::value_type;
+      T* val_ptr = (T*) curr.cont_seg_ptr;
+
+      if(i >= curr.start_i && i <= curr.end_i){
+        // The data is local
+        std::get<ctr>(tup) = val_ptr[i - curr.start_i];
+      }
+      else{
+        tup_flag = -1;
+      }
+    }
+
+
+
+    template<int ctr, typename Dest, typename Tup, typename Curr>
+    void build_tuple_remote(int& tup_flag, int i, Dest& dest, Tup& tup, Curr& curr){
       using T = typename Curr::value_type;
       T* val_ptr = (T*) curr.cont_seg_ptr;
       T* comm_ptr = (T*) curr.comm_seg_ptr;
 
       if(i >= curr.start_i && i <= curr.end_i){
+        // The data is local, parts of a tuple is allowed to be local
         std::get<ctr>(tup) = val_ptr[i - curr.start_i];
       }
-
       else if(i < curr.start_i){
         int offset = i - dest.start_i;
+
+        // Indicate that we have a remote value in our tuple
+        tup_flag = 1;
 
         gaspi_wait(curr.queue, GASPI_BLOCK);
         std::get<ctr>(tup) = comm_ptr[offset];
@@ -330,12 +373,18 @@ namespace skepu{
         // i > curr.end_i
         int offset = std::max(curr.start_i - dest.start_i, 0);
 
+        // Indicate that we have a remote value in our tuple
+        tup_flag = 1;
+
         // If curr.end_i < dest.end_i then we have transfered elements
         offset += std::max(dest.end_i - curr.end_i, 0);
         gaspi_wait(curr.queue, GASPI_BLOCK);
         std::get<ctr>(tup) = comm_ptr[offset];
       }
+
     }
+
+
 
 
 
@@ -608,36 +657,87 @@ namespace skepu{
       auto variadic(DestCont& dest_cont, Conts&... conts) ->
       decltype(
         std::declval<typename DestCont::is_skepu_container>(),
-
         std::declval<void>()){
 
           using T = typename DestCont::value_type;
           using tup_type = _gpi::tuple_of<nr_args, T>;
 
-          static_assert(nr_args -1 == sizeof...(Conts), "Wrong number of arguments");
+
+          static_assert(nr_args == sizeof...(Conts), "Missmatching number of arguments");
           assert(DestCont::smallest(dest_cont, conts...) >= dest_cont.global_size);
 
+          // TODO
+          // Ändra read range så att den väntar in vclock och skickar en notif
+          // till ägaren när läsningen gått igenom.
+          // Första tråden som läser notifen får sätta en flagga i container
+          // objektet. Denna flagga måste återställas i slutet av operationen.
 
-          const int N = 1 + sizeof...(Conts);
-          const int buffer_size = DestCont::COMM_BUFFER_NR_ELEMS / N;
 
-          dest_cont.build_buffer(dest_cont, conts...);
+          //const int N = 1 + sizeof...(Conts);
+          //const int buffer_size = DestCont::COMM_BUFFER_NR_ELEMS / N;
+
+          T* const dest_ptr = (T*) dest_cont.cont_seg_ptr;
 
           #pragma omp parallel
           {
+
+            #pragma omp single nowait
+            {
+              dest_cont.build_buffer(conts...);
+
+            }
+
             int glob_i;
-            T* dest_ptr = (T*) dest_cont.cont_seg_ptr;
             tup_type tup{};
 
-            for(int i = omp_get_thread_num(); i < dest_cont.local_size;
-            i = i + omp_get_num_threads()){
+            // Indicates whether a tuple was build succesfully or not
+            int tup_flag{};
+
+            // Dynamic scheduling as to not overload the thread building the
+            // buffer. Another solution is to not give the buffer building
+            // thread any work whatsoever and use static scheduling.
+            #pragma omp for schedule(dynamic)
+            for(int i = 0; i < dest_cont.local_size; i++){
               glob_i = i + dest_cont.start_i;
+              tup_flag = 0;
 
               // The template arg is used to traverse the tupel starting at 0
-              build_tuple<0>(glob_i, dest_cont, tup, dest_cont, conts...);
-              dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
+              //build_tuple<0>(tup_flag, glob_i, true, dest_cont, tup, dest_cont, conts...);
+
+              build_tuple<0>(tup_flag, glob_i, true, dest_cont, tup, conts...);
+
+              // Only store correctly created tuples
+              if(tup_flag != -1){
+                dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
+              }
             }
-        }
+
+            // Wait for the buffers to be finished building and all local work.
+            // After this barrier we guarantee that:
+            // 1 -  The pure local operations are done
+            // 2 - Our read requests have been sent (but not neccesarily finished)
+            #pragma omp barrier
+
+
+            // The remaining work all use remote information and may require
+            // waiting, hence we use dynamic scheduling
+            #pragma omp for schedule(dynamic)
+            for(int i = 0; i < dest_cont.local_size; i++){
+              glob_i = i + dest_cont.start_i;
+              tup_flag = 0;
+
+              build_tuple<0>(tup_flag, glob_i, false, dest_cont, tup, conts...);
+
+              if(tup_flag == 1){
+                dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
+              }
+            }
+        } // end of parallel region
+
+        // TODO increment op_nr of all containers
+        // OR set them to the highest value of all containers?
+        // ALSO what OP number should we wait for?
+
       }
   };
 
