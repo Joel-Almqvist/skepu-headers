@@ -32,7 +32,7 @@ namespace skepu{
     friend class FilterClass;
   private:
 
-    using is_skepu_container = decltype(true);
+    using is_skepu_container = std::true_type;
 
     static const int COMM_BUFFER_NR_ELEMS = 50;
 
@@ -209,7 +209,7 @@ namespace skepu{
     };
 
 
-    void wait_for_vclocks(int wait_val){
+    void wait_for_vclocks(unsigned long wait_val){
       int curr_rank;
       int curr_seg_id;
       const int min_seg_id = segment_id - rank;
@@ -283,12 +283,12 @@ namespace skepu{
 
     template<typename First, typename ... Rest>
     static long smallest(First& first, Rest&... rest){
-      smallest(first.global_size, rest...);
+      return smallest(first.global_size, rest...);
     }
 
     template<typename First, typename ... Rest>
     static long smallest(long i, First& first, Rest&... rest){
-      smallest(std::min(first.global_size, i), rest...);
+      return smallest(std::min(first.global_size, i), rest...);
     }
 
     template<typename First>
@@ -296,6 +296,36 @@ namespace skepu{
       return std::min(first.global_size, i);
     }
 
+
+
+    template<typename First, typename ... Rest>
+    static unsigned long max_op(First& first, Rest&... rest){
+      return max_op(first.op_nr, rest...);
+    }
+
+
+    template<typename First, typename ... Rest>
+    static unsigned long max_op(unsigned long acc, First& first, Rest&... rest){
+      return max_op(std::max(acc, first.op_nr), rest...);
+    }
+
+    template<typename Last>
+    static unsigned long max_op(unsigned long acc, Last& last){
+      return std::max(acc, last.op_nr);
+    }
+
+template<typename First, typename ... Rest>
+static void set_op_nr(unsigned long val, First& first, Rest&... rest){
+  first.op_nr = val;
+  first.vclock[first.rank] = val;
+  set_op_nr(val, rest...);
+}
+
+template<typename Last>
+static void set_op_nr(unsigned long val, Last& last){
+  last.op_nr = val;
+  last.vclock[last.rank] = val;
+}
 
   public:
 

@@ -384,10 +384,6 @@ namespace skepu{
 
     }
 
-
-
-
-
   public:
 
 
@@ -401,7 +397,7 @@ namespace skepu{
     * 4 - Wait until all remote ranks are done reading from us
     */
     template<typename DestCont, typename From>
-     auto operator()(DestCont& dest_cont, From& from) ->
+     auto old1(DestCont& dest_cont, From& from) ->
      decltype(
        std::declval<typename DestCont::is_skepu_container>(),
        std::declval<typename From::is_skepu_container>(),
@@ -532,7 +528,7 @@ namespace skepu{
      * unique.
      */
      template<typename DestCont, typename Cont1, typename Cont2>
-      auto operator()(DestCont& dest_cont, Cont1& cont1, Cont2& cont2) ->
+      auto old2(DestCont& dest_cont, Cont1& cont1, Cont2& cont2) ->
       decltype(
         std::declval<typename DestCont::is_skepu_container>(),
         std::declval<typename Cont1::is_skepu_container>(),
@@ -654,7 +650,7 @@ namespace skepu{
 
 
      template<typename DestCont, typename ... Conts>
-      auto variadic(DestCont& dest_cont, Conts&... conts) ->
+      auto operator()(DestCont& dest_cont, Conts&... conts) ->
       decltype(
         std::declval<typename DestCont::is_skepu_container>(),
         std::declval<void>()){
@@ -662,19 +658,14 @@ namespace skepu{
           using T = typename DestCont::value_type;
           using tup_type = _gpi::tuple_of<nr_args, T>;
 
-
           static_assert(nr_args == sizeof...(Conts), "Missmatching number of arguments");
-          assert(DestCont::smallest(dest_cont, conts...) >= dest_cont.global_size);
 
-          // TODO
-          // Ändra read range så att den väntar in vclock och skickar en notif
-          // till ägaren när läsningen gått igenom.
-          // Första tråden som läser notifen får sätta en flagga i container
-          // objektet. Denna flagga måste återställas i slutet av operationen.
+          if(DestCont::smallest(dest_cont, conts...) < dest_cont.global_size){
+            throw std::logic_error("Can not map a smaller container into a larger one");
+          }
 
-
-          //const int N = 1 + sizeof...(Conts);
-          //const int buffer_size = DestCont::COMM_BUFFER_NR_ELEMS / N;
+          unsigned long this_op_nr = DestCont::max_op(dest_cont, conts...) + 1;
+          DestCont::set_op_nr(this_op_nr, dest_cont, conts...);
 
           T* const dest_ptr = (T*) dest_cont.cont_seg_ptr;
 
@@ -684,7 +675,6 @@ namespace skepu{
             #pragma omp single nowait
             {
               dest_cont.build_buffer(conts...);
-
             }
 
             int glob_i;
@@ -733,11 +723,6 @@ namespace skepu{
               }
             }
         } // end of parallel region
-
-        // TODO increment op_nr of all containers
-        // OR set them to the highest value of all containers?
-        // ALSO what OP number should we wait for?
-
       }
   };
 

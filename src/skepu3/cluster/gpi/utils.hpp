@@ -9,6 +9,7 @@ namespace skepu{
   // Does this type trait exists elsewhere? Do we need to have it here?
   template<typename T>
   struct is_skepu_container : std::false_type {};
+
 }
 
 
@@ -64,6 +65,18 @@ namespace skepu::_gpi{
         func(exp...);
         }
   };
+
+/* Should be struct based for compile time usage
+  template<typename First, typename... Rest>
+  bool is_skepu(First& first, Rest&... rest){
+    return First::is_skepu_container && is_skepu(rest...);
+  }
+
+  template<typename Last>
+  bool is_skepu(Last& last){
+    return Last::is_skepu_container;
+  }
+*/
 
 }
 
