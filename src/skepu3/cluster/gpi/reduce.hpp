@@ -25,14 +25,8 @@ namespace skepu{
 
        if(is_skepu_container<Container>::value){
 
-         // TODO Find a better solution than a barrier.
-         // Currently it prevents multiple operations from modifying
-         // the communication and container segments and needs to be at
-         // the start of all functions which use these.
-         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
-
+         cont.vclock[cont.rank] = ++cont.op_nr;
          gaspi_notification_id_t notify_id;
-
 
          T local_sum = func(((T*) cont.cont_seg_ptr)[0], ((T*) cont.cont_seg_ptr)[1]);
 
@@ -64,6 +58,11 @@ namespace skepu{
                remote_comm_offset = cont.rank + step == cont.nr_nodes - 1 ?
                   cont.last_partition_comm_offset :
                   cont.norm_partition_comm_offset;
+
+                  // Make sure we do not overwrite the remote comm buffer
+                  cont.wait_ranks.clear();
+                  cont.wait_ranks.push_back(cont.rank + step);
+                  cont.wait_for_vclocks(cont.op_nr);
 
                 gaspi_write_notify(cont.segment_id, // local seg
                     cont.comm_offset, // local offset
