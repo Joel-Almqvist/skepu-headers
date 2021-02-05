@@ -371,13 +371,13 @@ namespace skepu{
       }
       else{
         // i > curr.end_i
-        int offset = std::max(curr.start_i - dest.start_i, 0);
+        int offset = std::max(curr.start_i - dest.start_i, long{0});
 
         // Indicate that we have a remote value in our tuple
         tup_flag = 1;
 
         // If curr.end_i < dest.end_i then we have transfered elements
-        offset += std::max(dest.end_i - curr.end_i, 0);
+        offset += std::max(dest.end_i - curr.end_i, long{0});
         gaspi_wait(curr.queue, GASPI_BLOCK);
         std::get<ctr>(tup) = comm_ptr[offset];
       }
@@ -669,6 +669,15 @@ namespace skepu{
 
           T* const dest_ptr = (T*) dest_cont.cont_seg_ptr;
 
+          long lowest = DestCont::lowest_shared_i(conts...);
+          long highest = DestCont::highest_shared_i(conts...);
+
+          if(highest < lowest){
+            // No overlap
+            highest = -1;
+            lowest = -1;
+          }
+
           #pragma omp parallel
           {
 
@@ -681,23 +690,28 @@ namespace skepu{
             tup_type tup{};
 
             // Indicates whether a tuple was build succesfully or not
+            // no longer used
             int tup_flag{};
+
+            // Handle pure local indeces only if they exist
+            if(highest != -1 && lowest != -1){
 
             // Dynamic scheduling as to not overload the thread building the
             // buffer. Another solution is to not give the buffer building
             // thread any work whatsoever and use static scheduling.
-            #pragma omp for schedule(dynamic)
-            for(int i = 0; i < dest_cont.local_size; i++){
-              glob_i = i + dest_cont.start_i;
-              tup_flag = 0;
+              #pragma omp for schedule(dynamic)
+              for(int i = 0; i < dest_cont.local_size; i++){
+                glob_i = i + dest_cont.start_i;
 
-              // The template arg is used to traverse the tupel starting at 0
-              //build_tuple<0>(tup_flag, glob_i, true, dest_cont, tup, dest_cont, conts...);
+                if(glob_i < lowest || glob_i > highest){
+                  // Our value is not local and will be handled after building
+                  // the buffers of remote values
+                  continue;
+                }
 
-              build_tuple<0>(tup_flag, glob_i, true, dest_cont, tup, conts...);
+                // The template arg is used to traverse the tupel starting at 0
+                build_tuple<0>(tup_flag, glob_i, true, dest_cont, tup, conts...);
 
-              // Only store correctly created tuples
-              if(tup_flag != -1){
                 dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
               }
             }
@@ -708,20 +722,25 @@ namespace skepu{
             // 2 - Our read requests have been sent (but not neccesarily finished)
             #pragma omp barrier
 
+            // Handle non-purely-local indeces only if they exist
+            if(!(lowest == dest_cont.start_i && highest == dest_cont.end_i)){
 
-            // The remaining work all use remote information and may require
-            // waiting, hence we use dynamic scheduling
-            #pragma omp for schedule(dynamic)
-            for(int i = 0; i < dest_cont.local_size; i++){
-              glob_i = i + dest_cont.start_i;
-              tup_flag = 0;
+              // The remaining work all use remote information and may require
+              // waiting, hence we use dynamic scheduling
+              #pragma omp for schedule(dynamic)
+              for(int i = 0; i < dest_cont.local_size; i++){
+                glob_i = i + dest_cont.start_i;
 
-              build_tuple<0>(tup_flag, glob_i, false, dest_cont, tup, conts...);
+                if(glob_i >= lowest && glob_i <= highest){
+                  // The index has already been handled above
+                  continue;
+                }
 
-              if(tup_flag == 1){
+                build_tuple<0>(tup_flag, glob_i, false, dest_cont, tup, conts...);
+
                 dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
               }
-            }
+          }
         } // end of parallel region
       }
   };

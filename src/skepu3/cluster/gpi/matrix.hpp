@@ -56,8 +56,8 @@ namespace skepu{
     long unsigned comm_size;
 
     // Indiciates which indeces this partition handles
-    int start_i;
-    int end_i;
+    long start_i;
+    long end_i;
 
     // TODO remove this, norm_partition_size == step
     int step;
@@ -251,7 +251,6 @@ namespace skepu{
         // transfer up to our start_i
         transfered_obj = cont.start_i - start_i;
 
-
         int first_owner = cont.get_owner(start_i);
         wait_ranks.clear();
 
@@ -266,8 +265,6 @@ namespace skepu{
 
       if(cont.end_i < end_i){
         // transfer up to our end_i
-
-
         int last_owner = cont.get_owner(end_i);
         wait_ranks.clear();
 
@@ -296,6 +293,34 @@ namespace skepu{
       return std::min(first.global_size, i);
     }
 
+    template<typename First, typename ... Rest>
+    static long lowest_shared_i(First& first, Rest&... rest){
+      return lowest_shared_i(first.start_i, rest...);
+    }
+
+    template<typename First, typename ... Rest>
+    static long lowest_shared_i(long i, First& first, Rest&... rest){
+      return lowest_shared_i(std::max(first.start_i, i), rest...);
+    }
+
+    static long lowest_shared_i(long i){
+      return i;
+    }
+
+
+    template<typename First, typename ... Rest>
+    static long highest_shared_i(First& first, Rest&... rest){
+      return highest_shared_i(first.end_i, rest...);
+    }
+
+    template<typename First, typename ... Rest>
+    static long highest_shared_i(long i, First& first, Rest&... rest){
+      return highest_shared_i(std::min(first.end_i, i), rest...);
+    }
+
+    static long highest_shared_i(long i){
+      return i;
+    }
 
 
     template<typename First, typename ... Rest>
