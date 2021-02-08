@@ -3,6 +3,7 @@
 #include <GASPI.h>
 #include <iostream>
 #include <vector>
+#include <environment.hpp>
 // TODO remove iostream
 
 namespace skepu{
