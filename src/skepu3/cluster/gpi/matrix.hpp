@@ -473,7 +473,7 @@ static void set_op_nr(unsigned long val, Last& last){
     //
     // TODO A distributed distribution scheme of this value should be implemented.
     // currently we are likely to overload a single node
-    T get(int index){
+    T operator[](const size_t index){
 
       if(index >= start_i && index <= end_i){
         // The value is local, wait until we have distributed the value

@@ -46,9 +46,9 @@ int main(){
 	add3(m1, m1, m2, m3);
 	add3(m1, m1, m2, m3);
 
-	int foo = m2.get(4);
-	foo = m2.get(5);
-	foo = m2.get(10);
+	int foo = m2[4];
+	foo = m2[5];
+	foo = m2[10];
 
 
 	m1.print();
