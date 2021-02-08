@@ -1,8 +1,6 @@
 #ifndef MAP_HPP
 #define AMP_HPP
 
-#include <matrix.hpp>
-
 #include <type_traits>
 #include <numeric>
 #include <cmath>
@@ -14,6 +12,7 @@
 #include <omp.h>
 #include <GASPI.h>
 
+#include "matrix.hpp"
 
 namespace skepu{
 

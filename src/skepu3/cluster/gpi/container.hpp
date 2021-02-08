@@ -1,10 +1,9 @@
 #ifndef CONTAINER_HPP
 #define CONTAINER_HPP
 #include <GASPI.h>
-#include <iostream>
 #include <vector>
-#include <environment.hpp>
-// TODO remove iostream
+
+#include "environment.hpp"
 
 namespace skepu{
 

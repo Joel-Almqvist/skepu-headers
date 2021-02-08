@@ -1,6 +1,6 @@
 #pragma once
 
-// Deprecated operators are still accessible in this version 
+// Deprecated operators are still accessible in this version
 #define SKEPU_ENABLE_DEPRECATED_OPERATOR
 
 #if defined(SKEPU_OPENMP) && (defined(SKEPU_CUDA) || defined(SKEPU_OPENCL))
@@ -19,6 +19,16 @@
 #undef __CUDACC__
 #endif
 
+#ifdef SKEPU_GPI
+
+#include "skepu3/cluster/gpi/container.hpp"
+#include "skepu3/cluster/gpi/matrix.hpp"
+#include "skepu3/cluster/gpi/map.hpp"
+#include "skepu3/cluster/gpi/reduce.hpp"
+
+#endif // SKEPU_GPI
+
+
 #ifdef SKEPU_MPI_STARPU
 
 #include "skepu3/cluster/cluster.hpp"
@@ -32,7 +42,10 @@
 #include "skepu3/cluster/skeletons/map/mappairsreduce.hpp"
 #include "skepu3/cluster/skeletons/reduce/reduce.hpp"
 
-#else
+#endif
+
+// Used to be an else
+#ifndef SKEPU_GPI
 
 #include "skepu3/cluster/cluster_fake.hpp"
 

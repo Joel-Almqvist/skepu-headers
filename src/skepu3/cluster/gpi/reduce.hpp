@@ -6,13 +6,13 @@
 #include <cmath>
 
 #include <GASPI.h>
-#include <matrix.hpp>
-#include <skeleton_base.hpp>
+
+#include "matrix.hpp"
 
 namespace skepu{
 
   template<typename ReduceFunc>
-  class Reduce1D : public _gpi::skeleton_base{
+  class Reduce1D{
   private:
     ReduceFunc func;
   public:

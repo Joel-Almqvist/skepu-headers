@@ -4,17 +4,14 @@
 #include <cassert>
 #include <vector>
 #include <array>
-#include <iostream>
 #include <GASPI.h>
 #include <type_traits>
 #include <chrono>
 #include <thread>
 #include <cmath>
 
-#include <utils.hpp>
-#include <container.hpp>
-#include <reduce.hpp>
-// TODO remove include iostream (among more?)
+#include "utils.hpp"
+#include "container.hpp"
 
 namespace skepu{
 
@@ -552,7 +549,7 @@ static void set_op_nr(unsigned long val, Last& last){
         }
         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
       }
-      
+
       // The sleep makes multiple prints prettier
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       if(rank == 0){

@@ -1,14 +1,8 @@
 #include <iostream>
-#include <GASPI.h>
+#include <skepu>
 #include <vector>
 #include <utility>
 
-#include<environment.hpp>
-#include <matrix.hpp>
-#include <reduce.hpp>
-#include <map.hpp>
-#include <omp.h>
-//#include <filter.hpp>
 
 struct Particle
 {

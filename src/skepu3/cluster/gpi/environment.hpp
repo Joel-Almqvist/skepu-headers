@@ -1,6 +1,7 @@
 #ifndef ENVIRONMENT_HPP
 #define ENVIRONMENT_HPP
 
+#include <GASPI.h>
 
 /*
 * This singleton scheme allows for better control of global state.
