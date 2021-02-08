@@ -9,8 +9,8 @@ namespace skepu{
 
   namespace _gpi{
 
-    int curr_containers = 0;
-    int created_containers = 0;
+   int curr_containers = 0;
+   int created_containers = 0;
 
     class Container{
 
@@ -43,15 +43,9 @@ namespace skepu{
       unsigned long* vclock;
 
       Container() : wait_ranks{}{
-        if(curr_containers == 0){
 
-          // WARNING This is not a good solution, the same program may call
-          // multiple init/terminates. However it is unlikely and simply doing
-          // this in main leaves the remaining objects in a bad state (crashes).
-          gaspi_proc_init(GASPI_BLOCK);
-
-        }
-
+        Environment& env = Environment::get_instance();
+        env.init();
 
         gaspi_proc_rank(&rank);
         gaspi_proc_num(&nr_nodes);
@@ -65,20 +59,10 @@ namespace skepu{
 
     public:
       virtual ~Container(){
-        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
         curr_containers--;
-        if(curr_containers == 0){
-          // WARNING This is not a good solution, the same program may call
-          // multiple init/terminates. However it is unlikely and simply doing
-          // this in main leaves the remaining objects in a bad state (crashes).
-          gaspi_proc_term(GASPI_BLOCK);
-        }
       }
     };
-
   }
-
 }
-
 
 #endif //CONTAINER_HPP

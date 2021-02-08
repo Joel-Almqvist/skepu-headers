@@ -477,8 +477,9 @@ static void set_op_nr(unsigned long val, Last& last){
     // TODO A distributed distribution scheme of this value should be implemented.
     // currently we are likely to overload a single node
     T get(int index){
+
       if(index >= start_i && index <= end_i){
-        // The value is local, sleep until we have distributed the value
+        // The value is local, wait until we have distributed the value
 
         gaspi_notification_id_t notify_id;
         gaspi_notification_t notify_val;
@@ -495,6 +496,7 @@ static void set_op_nr(unsigned long val, Last& last){
             GASPI_BLOCK
           );
           gaspi_notify_reset(segment_id, notify_id, &notify_val);
+
         }
 
         ++notif_ctr;
@@ -502,12 +504,7 @@ static void set_op_nr(unsigned long val, Last& last){
       }
       else{
         // The rank holding the value
-        int dest_rank = std::floor(((double) index) / step);
-        if(dest_rank >= nr_nodes){
-          dest_rank = nr_nodes - 1;
-        }
-
-        // TODO Possible optimization to only wait for last Write Op
+        int dest_rank = get_owner(index);
 
         // Wait until the rank is on the current OP
         wait_ranks.clear();
@@ -528,8 +525,7 @@ static void set_op_nr(unsigned long val, Last& last){
         gaspi_notify(
           segment_id + dest_rank - rank, // remote segment
           dest_rank,
-          //notif_ctr * nr_nodes + rank, // notif id
-          notif_ctr * nr_nodes + 1, // notif id
+          notif_ctr * nr_nodes + rank, // notif id
           13, // notif val, not used
           queue,
           GASPI_BLOCK
@@ -556,6 +552,8 @@ static void set_op_nr(unsigned long val, Last& last){
         }
         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
       }
+      
+      // The sleep makes multiple prints prettier
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       if(rank == 0){
         printf("\n");
@@ -575,6 +573,7 @@ static void set_op_nr(unsigned long val, Last& last){
         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
       }
 
+      // The sleep makes multiple prints prettier
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       if(rank == 0){
         printf("\n");

@@ -3,6 +3,7 @@
 #include <vector>
 #include <utility>
 
+#include<environment.hpp>
 #include <matrix.hpp>
 #include <reduce.hpp>
 #include <map.hpp>
@@ -19,35 +20,44 @@ struct Particle
 
 int main(){
 
-
   skepu::Matrix<int> m1{4,4,1};
   skepu::Matrix<int> m2{4,4,2};
-  skepu::Matrix<int> m3{4,4,3};
+  skepu::Matrix<int> m3{5,5,3};
+	skepu::Matrix<int> m4{4,4,4};
+	skepu::Matrix<int> m5{6,3,5};
 
+	auto square = skepu::Map<1>([](int a) int {
+		return a * a;
+	});
 
-  auto add = skepu::Map<2>([](int a, int b) int {
+  auto add2 = skepu::Map<2>([](int a, int b) int {
     return a + b;
   });
 
+	auto add3 = skepu::Map<3>([](int a, int b, int c) int {
+    return a + b + c;
+  });
 
-//	add(m1,m1, m3);
-	// TODO compiles with wrong amount of containers
-	add.variadic(m1, m2);
+
+	auto add4 = skepu::Map<4>([](int a, int b, int c, int d) int {
+		return a + b + c + d;
+	});
 
 
-	gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+	add2(m1, m2, m2);
+	add3(m1, m1, m2, m3);
+	add3(m1, m1, m2, m3);
+	add3(m1, m1, m2, m3);
+	add3(m1, m1, m2, m3);
+	add3(m1, m1, m2, m3);
+	add3(m1, m1, m2, m3);
+
+	int foo = m2.get(4);
+	foo = m2.get(5);
+	foo = m2.get(10);
+
+
 	m1.print();
 
-	//auto map1 = skepu::Map<1413>([](int a, int b) int {
-  //  return a + b;
-  //});
-
-
-
-
-	//int foo = m1.get(0);
-	//printf("Got %d\n", foo);
-
-//gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
   return 0;
 }
