@@ -62,7 +62,7 @@ namespace skepu::_gpi{
       static auto exec(Func func, Tup& tup, Exp&... exp)
       -> typename std::remove_reference<decltype(std::get<0>(tup))>::type
       {
-        func(exp...);
+        return func(exp...);
         }
   };
 
