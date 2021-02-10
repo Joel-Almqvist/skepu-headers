@@ -301,40 +301,40 @@ namespace skepu{
 
 
     template<int ctr, typename Dest, typename Tup, typename Curr, typename... Rest>
-    void build_tuple(int& tup_flag, int i, bool local_only, Dest& dest,
+    void build_tuple(int i, bool local_only, Dest& dest,
        Tup& tup, Curr& curr, Rest&... rest){
 
       if(local_only){
-        build_tuple_local<ctr>(tup_flag, i, dest, tup, curr);
+        build_tuple_local<ctr>(i, dest, tup, curr);
 
         // Early break if the tuple need a remote value
-        if(tup_flag != -1){
-          build_tuple<ctr + 1>(tup_flag, i, local_only, dest, tup, rest...);
-        }
+        //if(tup_flag != -1){
+          build_tuple<ctr + 1>(i, local_only, dest, tup, rest...);
+        //}
       }
 
       else{
-        build_tuple_remote<ctr>(tup_flag, i, dest, tup, curr);
+        build_tuple_remote<ctr>(i, dest, tup, curr);
 
         // No early break possible for remote-valued tuples
-        build_tuple<ctr + 1>(tup_flag, i, local_only, dest, tup, rest...);
+        build_tuple<ctr + 1>(i, local_only, dest, tup, rest...);
       }
     }
 
     template<int ctr, typename Dest, typename Tup, typename Curr>
-    void build_tuple(int& tup_flag, int i, bool local_only, Dest& dest,
+    void build_tuple(int i, bool local_only, Dest& dest,
        Tup& tup, Curr& curr){
          if(local_only){
-           build_tuple_local<ctr>(tup_flag, i, dest, tup, curr);
+           build_tuple_local<ctr>(i, dest, tup, curr);
          }
          else{
-           build_tuple_remote<ctr>(tup_flag, i, dest, tup, curr);
+           build_tuple_remote<ctr>(i, dest, tup, curr);
          }
     }
 
     // Adds a local value to the tuple or indicate error
     template<int ctr, typename Dest, typename Tup, typename Curr>
-    void build_tuple_local(int& tup_flag, int i, Dest& dest, Tup& tup, Curr& curr){
+    void build_tuple_local(int i, Dest& dest, Tup& tup, Curr& curr){
       using T = typename Curr::value_type;
       T* val_ptr = (T*) curr.cont_seg_ptr;
 
@@ -342,15 +342,12 @@ namespace skepu{
         // The data is local
         std::get<ctr>(tup) = val_ptr[i - curr.start_i];
       }
-      else{
-        tup_flag = -1;
-      }
     }
 
 
 
     template<int ctr, typename Dest, typename Tup, typename Curr>
-    void build_tuple_remote(int& tup_flag, int i, Dest& dest, Tup& tup, Curr& curr){
+    void build_tuple_remote(int i, Dest& dest, Tup& tup, Curr& curr){
       using T = typename Curr::value_type;
       T* val_ptr = (T*) curr.cont_seg_ptr;
       T* comm_ptr = (T*) curr.comm_seg_ptr;
@@ -362,18 +359,12 @@ namespace skepu{
       else if(i < curr.start_i){
         int offset = i - dest.start_i;
 
-        // Indicate that we have a remote value in our tuple
-        tup_flag = 1;
-
         gaspi_wait(curr.queue, GASPI_BLOCK);
         std::get<ctr>(tup) = comm_ptr[offset];
       }
       else{
         // i > curr.end_i
         int offset = std::max(curr.start_i - dest.start_i, long{0});
-
-        // Indicate that we have a remote value in our tuple
-        tup_flag = 1;
 
         // If curr.end_i < dest.end_i then we have transfered elements
         offset += std::max(dest.end_i - curr.end_i, long{0});
@@ -680,17 +671,8 @@ namespace skepu{
           #pragma omp parallel
           {
 
-            #pragma omp single nowait
-            {
-              dest_cont.build_buffer(conts...);
-            }
-
             int glob_i;
             tup_type tup{};
-
-            // Indicates whether a tuple was build succesfully or not
-            // no longer used
-            int tup_flag{};
 
             // Handle pure local indeces only if they exist
             if(highest != -1 && lowest != -1){
@@ -698,44 +680,48 @@ namespace skepu{
             // Dynamic scheduling as to not overload the thread building the
             // buffer. Another solution is to not give the buffer building
             // thread any work whatsoever and use static scheduling.
-              #pragma omp for schedule(dynamic)
-              for(int i = 0; i < dest_cont.local_size; i++){
-                glob_i = i + dest_cont.start_i;
-
-                if(glob_i < lowest || glob_i > highest){
-                  // Our value is not local and will be handled after building
-                  // the buffers of remote values
-                  continue;
-                }
+              #pragma omp for schedule(static)
+              for(int glob_i = lowest; glob_i <= highest; glob_i++){
+                int i = glob_i - dest_cont.start_i;
 
                 // The template arg is used to traverse the tupel starting at 0
-                build_tuple<0>(tup_flag, glob_i, true, dest_cont, tup, conts...);
+                build_tuple<0>(glob_i, true, dest_cont, tup, conts...);
 
                 dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
               }
             }
 
-            // Wait for the buffers to be finished building and all local work.
-            // After this barrier we guarantee that:
+            #pragma omp single
+            {
+              dest_cont.build_buffer(conts...);
+            }
+              // After the above barrier we guarantee that:
             // 1 -  The pure local operations are done
             // 2 - Our read requests have been sent (but not neccesarily finished)
-            #pragma omp barrier
+            // 3 - All the ranks we will read are on the same operation as us.
+
 
             // Handle non-purely-local indeces only if they exist
             if(!(lowest == dest_cont.start_i && highest == dest_cont.end_i)){
 
+
               // The remaining work all use remote information and may require
-              // waiting, hence we use dynamic scheduling
-              #pragma omp for schedule(dynamic)
-              for(int i = 0; i < dest_cont.local_size; i++){
-                glob_i = i + dest_cont.start_i;
+              // waiting, but static scheduling still seem to have superior
+              // performance since the drift between nodes is generally very low.
+              #pragma omp for schedule(static)
+              for(int glob_i = dest_cont.start_i; glob_i < lowest; glob_i++){
+                int i = glob_i - dest_cont.start_i;
 
-                if(glob_i >= lowest && glob_i <= highest){
-                  // The index has already been handled above
-                  continue;
-                }
+                build_tuple<0>(glob_i, false, dest_cont, tup, conts...);
 
-                build_tuple<0>(tup_flag, glob_i, false, dest_cont, tup, conts...);
+                dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
+              }
+
+              #pragma omp for schedule(static)
+              for(int glob_i = highest + 1; glob_i <= dest_cont.end_i; glob_i++){
+                int i = glob_i - dest_cont.start_i;
+
+                build_tuple<0>(glob_i, false, dest_cont, tup, conts...);
 
                 dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
               }
