@@ -27,9 +27,12 @@ namespace skepu{
     friend class Map1D;
     template<typename TT>
     friend class FilterClass;
-  private:
 
-    using is_skepu_container = std::true_type;
+    template<typename TT>
+    friend class Vec;
+
+
+  private:
 
     static const int COMM_BUFFER_NR_ELEMS = 50;
 
@@ -352,6 +355,7 @@ static void set_op_nr(unsigned long val, Last& last){
   public:
 
     using value_type = T;
+    using is_skepu_container = std::true_type;
 
     bool operator==(Matrix<T>& that){
       return this == &that;

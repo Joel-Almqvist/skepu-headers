@@ -13,6 +13,8 @@
 #include <GASPI.h>
 
 #include "matrix.hpp"
+#include <utils.hpp>
+#include "proxy.hpp"
 
 namespace skepu{
 
@@ -20,6 +22,7 @@ namespace skepu{
   class Map1D{
   private:
     Function func;
+    using arg_tup_t = typename _gpi::get_tup_t<Function, nr_args - 1>::type;
 
 
 
@@ -373,6 +376,37 @@ namespace skepu{
       }
 
     }
+
+
+
+
+    template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
+    void build_tuple2(int i, arg_tup_t& tup, Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+    {
+
+      using T = typename std::remove_reference<
+        decltype(std::get<tup_arg_ctr>(tup))>::type;
+      auto curr_val = std::get<tup_arg_ctr>(tup);
+
+      if(std::is_same<T, Index1D>::value){
+        printf("Index type at %d\n", tup_arg_ctr);
+      }
+
+      else if(std::is_same<T, Vec<Curr>>::value){
+
+        printf("Proxy type at %d\n", tup_arg_ctr);
+      }
+
+    }
+
+    template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
+    void build_tuple2(int i, arg_tup_t& tup, Dest& dest, Curr& curr, Rest&... rest)
+    {
+
+    }
+
+
+
 
   public:
 
@@ -728,6 +762,55 @@ namespace skepu{
           }
         } // end of parallel region
       }
+
+
+
+
+
+      /*
+      template<typename ... FooT>
+      struct get_skepu_val_t{
+        using type = std::false_type;
+      };
+
+
+      template<typename FooT>
+      struct get_skepu_val_t{
+        using type = typename FooT::is_skepu_container;
+      };
+      */
+
+
+
+      template<typename First, typename ... Rest>
+      struct foo{
+        //using type = std::tuple<>;
+      };
+
+
+
+      template<typename DestCont, typename ... Conts>
+      void apply(DestCont& dest, Conts&... conts)
+      {
+          using T = typename DestCont::value_type;
+
+
+
+          //using val_t = typename _gpi::get_skepu_val_t<DestCont>::type;
+          //using val_t2 = typename _gpi::get_skepu_val_t<int>::type;
+
+
+
+          arg_tup_t tup{};
+
+          build_tuple2<0>(0, tup, dest, conts...);
+
+
+      }
+
+
+
+
   };
 
 
