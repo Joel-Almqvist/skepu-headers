@@ -378,10 +378,57 @@ namespace skepu{
     }
 
 
+    /* build_tuple2 is used by the updated apply function which adds support for
+      index types as arguments to the lambda. It traverses a tuple and adds
+      the appropriate argument to it, some of which come the variadic list.
+
+      The following arguments are possible to add to the tupe:
+
+      1 - The Index1D type (but only as the first argument in the tuple)
+
+      2 - A proxy type which allows for random access into the container
+
+      3 - A scalar value which will be read from one of the containers
+
+      4 - A constant value read directly from the argument list
+
+    */
+
+
+    // Traverses through the argument list and calls a helper for function on
+    // every argument.
+    template<int tup_arg_ctr, typename Tup, typename Dest, typename... Rest>
+    auto build_tuple2(double sfinae_param, size_t i, Tup& tup, Dest& dest, Rest&... rest)
+    -> decltype( std::declval<decltype(std::get<0>(tup))::is_skepu_index>(),
+    std::declval<void>())
+    {
+      std::get<0>(tup) = Index1D{i};
+      build_tuple2<1>(double{}, i, tup, dest, rest...);
+    }
+
+    template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
+    void build_tuple2(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest,
+      Curr curr, Rest&... rest)
+    {
+      build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
+      build_tuple2<tup_arg_ctr + 1>(double{}, i, tup, dest, rest...);
+    }
+
+    template<int tup_arg_ctr, typename Dest, typename Curr>
+    void build_tuple2(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest, Curr& curr)
+    {
+      build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
+
+      if(tup_arg_ctr < nr_args){
+        std::cout << "Args remaining\n";
+        // call const iterations
+      }
+    }
 
 
     template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
-    void build_tuple2(int i, arg_tup_t& tup, Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+    void build_tuple2_helper(double sfinae_param, size_t i, arg_tup_t& tup,
+      Dest& dest, Matrix<Curr>& curr, Rest&... rest)
     {
 
       using T = typename std::remove_reference<
@@ -393,19 +440,21 @@ namespace skepu{
       }
 
       else if(std::is_same<T, Vec<Curr>>::value){
-
         printf("Proxy type at %d\n", tup_arg_ctr);
       }
 
+      else{
+        printf("Scalar value (from container) at index %d\n", tup_arg_ctr);
+
+      }
     }
 
-    template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
-    void build_tuple2(int i, arg_tup_t& tup, Dest& dest, Curr& curr, Rest&... rest)
+    template<int tup_arg_ctr, typename Dest, typename Curr_scalar>
+    void build_tuple2_helper(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest, Curr_scalar& curr)
     {
-
+      printf("Getting last constant from index %d \n", tup_arg_ctr);
+      std::get<tup_arg_ctr>(tup) = curr;
     }
-
-
 
 
   public:
@@ -790,8 +839,11 @@ namespace skepu{
 
 
       template<typename DestCont, typename ... Conts>
-      void apply(DestCont& dest, Conts&... conts)
+      void apply(DestCont& dest, Conts&&... conts)
       {
+
+        static_assert(sizeof...(Conts) == nr_args);
+
           using T = typename DestCont::value_type;
 
 
@@ -803,7 +855,8 @@ namespace skepu{
 
           arg_tup_t tup{};
 
-          build_tuple2<0>(0, tup, dest, conts...);
+          // Func(skepu::Vec<int> a, int b)
+          build_tuple2<0>(double{}, 0, tup, dest, conts...);
 
 
       }

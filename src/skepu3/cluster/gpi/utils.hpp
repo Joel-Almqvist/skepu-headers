@@ -13,6 +13,7 @@ namespace skepu{
 
   struct Index1D{
     size_t i;
+    using is_skepu_index = std::true_type;
   };
 
 }
