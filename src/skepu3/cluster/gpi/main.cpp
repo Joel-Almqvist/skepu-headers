@@ -39,8 +39,7 @@ int main(){
 		return 5;
 	});
 
-	mult.apply( m1, m2, m3, m3, 5);
-
+	mult.apply( m1, m2, m3, m3, 4);
 
   return 0;
 }

@@ -33,6 +33,8 @@ namespace skepu{
       gaspi_pointer_t comm_seg_ptr;
       long comm_offset;
 
+      unsigned int comm_buffer_free_slot;
+
       unsigned long op_nr;
 
       // Use a short due to gaspi_notification_id_t being of that type
@@ -53,6 +55,7 @@ namespace skepu{
 
         op_nr = 0;
         notif_ctr = 0;
+        comm_buffer_free_slot = 0;
         curr_containers++;
         created_containers++;
       }

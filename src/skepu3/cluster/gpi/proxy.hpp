@@ -20,6 +20,7 @@ namespace skepu{
   class Vec{
   private:
 
+
     template< typename TT, int>
     friend class Map1D;
 
@@ -35,6 +36,7 @@ namespace skepu{
 
 
   public:
+    using is_proxy_type = std::true_type;
 
     // Is public to allow for bracket initialization
     Vec(){

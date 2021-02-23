@@ -13,10 +13,74 @@
 #include <GASPI.h>
 
 #include "matrix.hpp"
-#include <utils.hpp>
+#include "utils.hpp"
 #include "proxy.hpp"
 
 namespace skepu{
+
+  namespace _gpi{
+
+
+
+    // Random access iterator type case
+    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
+    auto build_tuple2_helper(double sfinae_param, size_t i, Tup& tup,
+      Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+      -> decltype(
+        std::declval<
+          typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_proxy_type>(),
+      std::declval<void>())
+    {
+
+      using T = typename std::remove_reference<
+        decltype(std::get<tup_arg_ctr>(tup))>::type;
+      auto curr_val = std::get<tup_arg_ctr>(tup);
+
+      printf("Proxy type at %d\n", tup_arg_ctr);
+
+    }
+
+    // Index argument case
+    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
+    auto build_tuple2_helper(double sfinae_param, size_t i, Tup& tup,
+      Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+      -> decltype(
+        std::declval<
+          typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_index>(),
+      std::declval<void>())
+    {
+
+      using T = typename std::remove_reference<
+        decltype(std::get<tup_arg_ctr>(tup))>::type;
+      //auto curr_val = std::get<tup_arg_ctr>(tup);
+      printf("Index type at %d\n", tup_arg_ctr);
+    }
+
+
+    // Scalar value from container case
+    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
+    auto build_tuple2_helper(int sfinae_param, size_t i, Tup& tup,
+      Dest& dest, Matrix<Curr>& curr, Rest&... rest) -> decltype(std::declval<void>())
+    {
+
+
+      using T = typename std::remove_reference<
+        decltype(std::get<tup_arg_ctr>(tup))>::type;
+      auto curr_val = std::get<tup_arg_ctr>(tup);
+      printf("Scalar value (from container) at index %d\n", tup_arg_ctr);
+    }
+
+    // Constant value case
+    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr_scalar>
+    void build_tuple2_helper(int sfinae_param, size_t i, Tup& tup, Dest& dest, Curr_scalar& curr)
+    {
+      printf("Getting last constant from index %d \n", tup_arg_ctr);
+      std::get<tup_arg_ctr>(tup) = curr;
+    }
+
+
+  };
+
 
   template<typename Function, int nr_args>
   class Map1D{
@@ -410,51 +474,17 @@ namespace skepu{
     void build_tuple2(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest,
       Curr curr, Rest&... rest)
     {
-      build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
+      _gpi::build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
       build_tuple2<tup_arg_ctr + 1>(double{}, i, tup, dest, rest...);
     }
 
     template<int tup_arg_ctr, typename Dest, typename Curr>
     void build_tuple2(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest, Curr& curr)
     {
-      build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
+      _gpi::build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
 
-      if(tup_arg_ctr < nr_args){
-        std::cout << "Args remaining\n";
-        // call const iterations
-      }
     }
 
-
-    template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
-    void build_tuple2_helper(double sfinae_param, size_t i, arg_tup_t& tup,
-      Dest& dest, Matrix<Curr>& curr, Rest&... rest)
-    {
-
-      using T = typename std::remove_reference<
-        decltype(std::get<tup_arg_ctr>(tup))>::type;
-      auto curr_val = std::get<tup_arg_ctr>(tup);
-
-      if(std::is_same<T, Index1D>::value){
-        printf("Index type at %d\n", tup_arg_ctr);
-      }
-
-      else if(std::is_same<T, Vec<Curr>>::value){
-        printf("Proxy type at %d\n", tup_arg_ctr);
-      }
-
-      else{
-        printf("Scalar value (from container) at index %d\n", tup_arg_ctr);
-
-      }
-    }
-
-    template<int tup_arg_ctr, typename Dest, typename Curr_scalar>
-    void build_tuple2_helper(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest, Curr_scalar& curr)
-    {
-      printf("Getting last constant from index %d \n", tup_arg_ctr);
-      std::get<tup_arg_ctr>(tup) = curr;
-    }
 
 
   public:
@@ -776,7 +806,7 @@ namespace skepu{
 
             #pragma omp single
             {
-              dest_cont.build_buffer(conts...);
+              dest_cont.build_buffer(double{}, conts...);
             }
               // After the above barrier we guarantee that:
             // 1 -  The pure local operations are done
@@ -838,11 +868,11 @@ namespace skepu{
 
 
 
-      template<typename DestCont, typename ... Conts>
-      void apply(DestCont& dest, Conts&&... conts)
+      template<typename DestCont, typename ... Args>
+      void apply(DestCont& dest, Args&&... args)
       {
 
-        static_assert(sizeof...(Conts) == nr_args);
+        static_assert(sizeof...(args) == nr_args);
 
           using T = typename DestCont::value_type;
 
@@ -855,8 +885,30 @@ namespace skepu{
 
           arg_tup_t tup{};
 
-          // Func(skepu::Vec<int> a, int b)
-          build_tuple2<0>(double{}, 0, tup, dest, conts...);
+          // We assume that no lambda-call is pure-local, we can deduce such
+          // cases by checking if the lambda does not contain any random access
+          // iterator. However the old implementation can mimic this behavior
+          // by capturing the indeces and constants in the lambda. The old
+          // version should then be updated to match the new interface as it
+          // already implements speedups for handling the local work first.
+          //
+          // Summarized: Any calls without a random acess interator should be
+          // forwarded to the old solution in the future. Here we assume that
+          // there exists a random access iterator argument.
+
+
+          // TODO This causes segment faults
+          //dest.build_buffer(double{}, args...);
+
+          // Template argument is used to iterate over the tuple, double is for
+          // SFINAE
+          build_tuple2<0>(double{}, 0, tup, dest, args...);
+
+          // apply function, store at local_buffer
+
+          // wait for all ranks to finish
+
+          // move data from local_buffer to segment
 
 
       }
@@ -880,6 +932,7 @@ namespace skepu{
   {
     return std::move(Map1D<Function, nr_args>{func});
   }
+
 
 
 

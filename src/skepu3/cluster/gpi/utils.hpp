@@ -162,12 +162,12 @@ struct get_tup_t{
 };
 
 
-template<typename Func, typename ... Rest>
-struct get_tup_t<Func, 0, Rest...>{
+  template<typename Func, typename ... Rest>
+  struct get_tup_t<Func, 0, Rest...>{
 
-  using type = std::tuple<typename function_argument_type<Func, 0 >::type,
-    Rest...>;
-};
+    using type = std::tuple<typename function_argument_type<Func, 0 >::type,
+      Rest...>;
+  };
 
 }
 

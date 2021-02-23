@@ -36,6 +36,10 @@ namespace skepu{
 
     static const int COMM_BUFFER_NR_ELEMS = 50;
 
+    // Used to store two versions of the data so that Map may use a random access
+    // type within its function.
+    T* local_buffer;
+
     int local_size;
     long global_size;
 
@@ -237,19 +241,30 @@ namespace skepu{
 
 
     template<typename First, typename ... Rest>
-    void build_buffer(First& first, Rest&... rest){
-      build_buffer(first);
-      build_buffer(rest...);
+    void build_buffer(double SFINAE_param, Matrix<First>& first, Rest&... rest){
+      build_buffer_helper(first);
+      build_buffer(double{}, rest...);
     }
 
+    template<typename First, typename ... Rest>
+    void build_buffer(int SFINAE_PARAM, First& first, Rest&... rest){
+      build_buffer(double{}, rest...);
+    }
+
+    template<typename Sink>
+    void build_buffer(Sink sink){
+    }
+
+
     template<typename Cont>
-    void build_buffer(Cont& cont){
+    void build_buffer_helper(Cont& cont){
 
       int transfered_obj = 0;
 
       if(cont.start_i > start_i){
         // transfer up to our start_i
         transfered_obj = cont.start_i - start_i;
+        cont.comm_buffer_free_slot = transfered_obj;
 
         int first_owner = cont.get_owner(start_i);
         wait_ranks.clear();
@@ -273,6 +288,7 @@ namespace skepu{
         }
         wait_for_vclocks(op_nr);
 
+        cont.comm_buffer_free_slot += end_i - (cont.end_i + 1);
 
         cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, true);
       }
@@ -422,6 +438,8 @@ static void set_op_nr(unsigned long val, Last& last){
 
       gaspi_segment_ptr(segment_id, &cont_seg_ptr);
       comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
+
+      local_buffer = (T*) malloc(local_size * sizeof(T));
 
       // Point vclock to the memory after communication segment
       vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_NR_ELEMS);
