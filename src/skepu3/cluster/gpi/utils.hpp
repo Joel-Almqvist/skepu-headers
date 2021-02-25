@@ -44,7 +44,7 @@ namespace skepu::_gpi{
 
 
   // The dummy is used to allow compile time evaluation of the
-  // bool not_done
+  // bool
   template <int ctr, bool done>
   struct dummy;
 

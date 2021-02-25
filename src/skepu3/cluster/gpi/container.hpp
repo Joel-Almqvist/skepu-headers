@@ -18,6 +18,7 @@ namespace skepu{
       friend class Reduce1D;
       friend class Map1D;
       friend class FilterClass;
+      friend class build_tup_util;
     private:
 
     protected:
@@ -52,6 +53,7 @@ namespace skepu{
         gaspi_proc_rank(&rank);
         gaspi_proc_num(&nr_nodes);
         segment_id = created_containers * nr_nodes + rank;
+        //segment_id = created_containers;
 
         op_nr = 0;
         notif_ctr = 0;

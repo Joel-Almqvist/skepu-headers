@@ -21,16 +21,12 @@ namespace skepu{
   private:
 
 
-    template< typename TT, int>
+    template <typename TT, int>
     friend class Map1D;
 
     friend class Matrix<T>;
 
 
-    Vec(Matrix<T>& own){
-      owner = &own;
-
-    }
 
     Matrix<T>* owner;
 
@@ -38,17 +34,29 @@ namespace skepu{
   public:
     using is_proxy_type = std::true_type;
 
-    // Is public to allow for bracket initialization
-    Vec(){
+    // Would prefer is this was private
+    Vec(Matrix<T>& own){
+      owner = &own;
+
+      test = 999;
     }
 
+    // Is public to allow for bracket initialization
+    Vec(){
+      test = -1;
+    }
+
+    // TODO add operator []
+
+
+    int test;
 
   };
 
+
   namespace _gpi{
 
-
-    struct placeholder{};
+    // Functions to easier access the proxy type. Not currently used.
 
     template<typename T>
     auto make_proxy_t(int) -> decltype(

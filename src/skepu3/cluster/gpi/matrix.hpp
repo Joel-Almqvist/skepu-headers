@@ -14,6 +14,9 @@
 #include "container.hpp"
 
 namespace skepu{
+  namespace _gpi{
+    struct build_tup_util;
+  }
 
   template<typename T>
   class Matrix : public skepu::_gpi::Container{
@@ -31,6 +34,7 @@ namespace skepu{
     template<typename TT>
     friend class Vec;
 
+    friend class _gpi::build_tup_util;
 
   private:
 
@@ -175,9 +179,13 @@ namespace skepu{
 
 
     // Reads the remote vclock and updates our own
+    // Take in the vclock offsets since we might read from a container with
+    // a different type or size (and hence offset) than ourselves.
     void get_vclock(
       int dest_rank,
-      int dest_seg_id
+      int dest_seg_id,
+      int norm_part_vclock_offset,
+      int last_part_vclock_offset
       ){
 
         if(dest_rank == rank && dest_seg_id == segment_id){
@@ -186,8 +194,8 @@ namespace skepu{
         }
 
       unsigned long remote_offset = dest_rank == nr_nodes - 1 ?
-        last_partition_vclock_offset :
-        norm_vclock_offset;
+        last_part_vclock_offset :
+        norm_part_vclock_offset;
 
       gaspi_read(
         segment_id, // local seg
@@ -214,6 +222,11 @@ namespace skepu{
 
 
     void wait_for_vclocks(unsigned long wait_val){
+      wait_for_vclocks(wait_val, *this);
+      }
+
+    template<typename RemoteContT>
+    void wait_for_vclocks(unsigned long wait_val, RemoteContT& remote_cont){
       int curr_rank;
       int curr_seg_id;
       const int min_seg_id = segment_id - rank;
@@ -227,7 +240,8 @@ namespace skepu{
         }
 
         while(true){
-          get_vclock(curr_rank, curr_seg_id);
+          get_vclock(curr_rank, curr_seg_id, remote_cont.norm_vclock_offset,
+            remote_cont.last_partition_vclock_offset);
           if(vclock[curr_rank] >= wait_val){
             break;
           }
@@ -241,24 +255,23 @@ namespace skepu{
 
 
     template<typename First, typename ... Rest>
-    void build_buffer(double SFINAE_param, Matrix<First>& first, Rest&... rest){
-      build_buffer_helper(first);
-      build_buffer(double{}, rest...);
+    void build_buffer(bool no_wait, double SFINAE_param, Matrix<First>& first, Rest&... rest){
+      build_buffer_helper(no_wait, first);
+      build_buffer(no_wait, double{}, rest...);
     }
 
     template<typename First, typename ... Rest>
-    void build_buffer(int SFINAE_PARAM, First& first, Rest&... rest){
-      build_buffer(double{}, rest...);
+    void build_buffer(bool no_wait, int SFINAE_PARAM, First& first, Rest&... rest){
+      build_buffer(no_wait, double{}, rest...);
     }
 
     template<typename Sink>
-    void build_buffer(Sink sink){
+    void build_buffer(bool no_wait, Sink sink){
     }
 
 
     template<typename Cont>
-    void build_buffer_helper(Cont& cont){
-
+    void build_buffer_helper(bool no_wait, Cont& cont){
       int transfered_obj = 0;
 
       if(cont.start_i > start_i){
@@ -275,7 +288,7 @@ namespace skepu{
         wait_for_vclocks(op_nr);
 
         // read range is inclusive
-        cont.read_range(start_i, cont.start_i - 1, 0, cont, true);
+        cont.read_range(start_i, cont.start_i - 1, 0, cont, no_wait);
       }
 
       if(cont.end_i < end_i){
@@ -290,7 +303,7 @@ namespace skepu{
 
         cont.comm_buffer_free_slot += end_i - (cont.end_i + 1);
 
-        cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, true);
+        cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, no_wait);
       }
     }
 
@@ -339,34 +352,89 @@ namespace skepu{
     }
 
 
-    template<typename First, typename ... Rest>
-    static unsigned long max_op(First& first, Rest&... rest){
-      return max_op(first.op_nr, rest...);
+
+    // Given a list of Matrices and other types returns the highest OP number
+    // of the matrices.
+    template<typename ... Rest>
+    static unsigned long max_op(Rest&... rest){
+      return max_op(int{0}, 0, rest...);
     }
 
 
     template<typename First, typename ... Rest>
-    static unsigned long max_op(unsigned long acc, First& first, Rest&... rest){
-      return max_op(std::max(acc, first.op_nr), rest...);
+    static unsigned long max_op(int SFINAE, unsigned long acc, Matrix<First>& first,
+      Rest&... rest){
+      return max_op(int{}, std::max(acc, first.op_nr), rest...);
     }
+
+    template<typename First, typename ... Rest>
+    static unsigned long max_op(double SFINAE, unsigned long acc, First&& first,
+      Rest&... rest){
+      return max_op(int{}, acc, rest...);
+    }
+
 
     template<typename Last>
-    static unsigned long max_op(unsigned long acc, Last& last){
+    static unsigned long max_op(int SFINAE, unsigned long acc, Matrix<Last>& last){
       return std::max(acc, last.op_nr);
     }
 
-template<typename First, typename ... Rest>
-static void set_op_nr(unsigned long val, First& first, Rest&... rest){
-  first.op_nr = val;
-  first.vclock[first.rank] = val;
-  set_op_nr(val, rest...);
-}
+    template<typename Last>
+    static unsigned long max_op(double SFINAE, unsigned long acc, Last&& last){
+      return acc;
+    }
 
-template<typename Last>
-static void set_op_nr(unsigned long val, Last& last){
-  last.op_nr = val;
-  last.vclock[last.rank] = val;
-}
+
+
+  template<typename ... Rest>
+  static void set_op_nr(unsigned long val, Rest&... rest){
+    set_op_nr_helper(int{}, val, rest...);
+  }
+
+  template<typename First, typename ... Rest>
+  static void set_op_nr_helper(int SFINAE, unsigned long val, Matrix<First>& first,
+     Rest&... rest){
+    first.op_nr = val;
+    first.vclock[first.rank] = val;
+    set_op_nr_helper(int{}, val, rest...);
+  }
+
+
+  template<typename First, typename ... Rest>
+  static void set_op_nr_helper(double SFINAE, unsigned long val,
+    First&& first, Rest&... rest){
+    set_op_nr_helper(int{}, val, rest...);
+  }
+
+  template<typename Last>
+  static void set_op_nr_helper(int SFINAE, unsigned long val,
+      Matrix<Last>& last){
+    last.op_nr = val;
+    last.vclock[last.rank] = val;
+  }
+
+  template<typename Last>
+  static void set_op_nr_helper(double SFINAE, unsigned long val,
+      Last& last){
+  }
+
+
+  T& get_no_sync(size_t i, int thread_offset){
+
+    if(i >= start_i && i <= end_i){
+      return ((T*) cont_seg_ptr)[i - start_i];
+    }
+
+    else{
+
+      // TODO read and put in the free slot + offset space
+
+
+    }
+
+
+  }
+
 
   public:
 
@@ -450,6 +518,7 @@ static void set_op_nr(unsigned long val, Last& last){
       }
 
       gaspi_queue_create(&queue, GASPI_BLOCK);
+
     };
 
 

@@ -15,71 +15,10 @@
 #include "matrix.hpp"
 #include "utils.hpp"
 #include "proxy.hpp"
+#include "build_tup.hpp"
 
 namespace skepu{
 
-  namespace _gpi{
-
-
-
-    // Random access iterator type case
-    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-    auto build_tuple2_helper(double sfinae_param, size_t i, Tup& tup,
-      Dest& dest, Matrix<Curr>& curr, Rest&... rest)
-      -> decltype(
-        std::declval<
-          typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_proxy_type>(),
-      std::declval<void>())
-    {
-
-      using T = typename std::remove_reference<
-        decltype(std::get<tup_arg_ctr>(tup))>::type;
-      auto curr_val = std::get<tup_arg_ctr>(tup);
-
-      printf("Proxy type at %d\n", tup_arg_ctr);
-
-    }
-
-    // Index argument case
-    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-    auto build_tuple2_helper(double sfinae_param, size_t i, Tup& tup,
-      Dest& dest, Matrix<Curr>& curr, Rest&... rest)
-      -> decltype(
-        std::declval<
-          typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_index>(),
-      std::declval<void>())
-    {
-
-      using T = typename std::remove_reference<
-        decltype(std::get<tup_arg_ctr>(tup))>::type;
-      //auto curr_val = std::get<tup_arg_ctr>(tup);
-      printf("Index type at %d\n", tup_arg_ctr);
-    }
-
-
-    // Scalar value from container case
-    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-    auto build_tuple2_helper(int sfinae_param, size_t i, Tup& tup,
-      Dest& dest, Matrix<Curr>& curr, Rest&... rest) -> decltype(std::declval<void>())
-    {
-
-
-      using T = typename std::remove_reference<
-        decltype(std::get<tup_arg_ctr>(tup))>::type;
-      auto curr_val = std::get<tup_arg_ctr>(tup);
-      printf("Scalar value (from container) at index %d\n", tup_arg_ctr);
-    }
-
-    // Constant value case
-    template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr_scalar>
-    void build_tuple2_helper(int sfinae_param, size_t i, Tup& tup, Dest& dest, Curr_scalar& curr)
-    {
-      printf("Getting last constant from index %d \n", tup_arg_ctr);
-      std::get<tup_arg_ctr>(tup) = curr;
-    }
-
-
-  };
 
 
   template<typename Function, int nr_args>
@@ -442,50 +381,6 @@ namespace skepu{
     }
 
 
-    /* build_tuple2 is used by the updated apply function which adds support for
-      index types as arguments to the lambda. It traverses a tuple and adds
-      the appropriate argument to it, some of which come the variadic list.
-
-      The following arguments are possible to add to the tupe:
-
-      1 - The Index1D type (but only as the first argument in the tuple)
-
-      2 - A proxy type which allows for random access into the container
-
-      3 - A scalar value which will be read from one of the containers
-
-      4 - A constant value read directly from the argument list
-
-    */
-
-
-    // Traverses through the argument list and calls a helper for function on
-    // every argument.
-    template<int tup_arg_ctr, typename Tup, typename Dest, typename... Rest>
-    auto build_tuple2(double sfinae_param, size_t i, Tup& tup, Dest& dest, Rest&... rest)
-    -> decltype( std::declval<decltype(std::get<0>(tup))::is_skepu_index>(),
-    std::declval<void>())
-    {
-      std::get<0>(tup) = Index1D{i};
-      build_tuple2<1>(double{}, i, tup, dest, rest...);
-    }
-
-    template<int tup_arg_ctr, typename Dest, typename Curr, typename... Rest>
-    void build_tuple2(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest,
-      Curr curr, Rest&... rest)
-    {
-      _gpi::build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
-      build_tuple2<tup_arg_ctr + 1>(double{}, i, tup, dest, rest...);
-    }
-
-    template<int tup_arg_ctr, typename Dest, typename Curr>
-    void build_tuple2(int sfinae_param, size_t i, arg_tup_t& tup, Dest& dest, Curr& curr)
-    {
-      _gpi::build_tuple2_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
-
-    }
-
-
 
   public:
 
@@ -806,7 +701,7 @@ namespace skepu{
 
             #pragma omp single
             {
-              dest_cont.build_buffer(double{}, conts...);
+              dest_cont.build_buffer(true, double{}, conts...);
             }
               // After the above barrier we guarantee that:
             // 1 -  The pure local operations are done
@@ -872,45 +767,63 @@ namespace skepu{
       void apply(DestCont& dest, Args&&... args)
       {
 
-        static_assert(sizeof...(args) == nr_args);
+        using arg_0_t = typename std::remove_reference<
+          decltype(std::get<0>(std::declval<arg_tup_t>()))>::type;
 
-          using T = typename DestCont::value_type;
+        const bool case1 = std::is_same<arg_0_t, Index1D>::value &&
+          sizeof...(args) == nr_args - 1;
 
+        const bool case2 = !std::is_same<arg_0_t, Index1D>::value &&
+          sizeof...(args) == nr_args;
 
+        static_assert(case1 || case2);
 
-          //using val_t = typename _gpi::get_skepu_val_t<DestCont>::type;
-          //using val_t2 = typename _gpi::get_skepu_val_t<int>::type;
+        using T = typename DestCont::value_type;
 
+        arg_tup_t tup{};
 
+        // We assume that no lambda-call is pure-local, we can deduce such
+        // cases by checking if the lambda does not contain any random access
+        // iterator. However the old implementation can mimic this behavior
+        // by capturing the indeces and constants in the lambda. The old
+        // version should then be updated to match the new interface as it
+        // already implements speedups for handling the local work first.
+        //
+        // Summarized: Any calls without a random acess interator should be
+        // forwarded to the old solution in the future. Here we assume that
+        // there exists a random access iterator argument.
 
-          arg_tup_t tup{};
+        unsigned long this_op_nr = DestCont::max_op(dest, args...) + 1;
+        DestCont::set_op_nr(this_op_nr, dest, args...);
 
-          // We assume that no lambda-call is pure-local, we can deduce such
-          // cases by checking if the lambda does not contain any random access
-          // iterator. However the old implementation can mimic this behavior
-          // by capturing the indeces and constants in the lambda. The old
-          // version should then be updated to match the new interface as it
-          // already implements speedups for handling the local work first.
-          //
-          // Summarized: Any calls without a random acess interator should be
-          // forwarded to the old solution in the future. Here we assume that
-          // there exists a random access iterator argument.
-
-
-          // TODO This causes segment faults
-          //dest.build_buffer(double{}, args...);
-
-          // Template argument is used to iterate over the tuple, double is for
-          // SFINAE
-          build_tuple2<0>(double{}, 0, tup, dest, args...);
-
-          // apply function, store at local_buffer
-
-          // wait for all ranks to finish
-
-          // move data from local_buffer to segment
+        dest.build_buffer(false, double{}, args...);
 
 
+        for(size_t i = dest.start_i; i <= dest.end_i; ++i){
+
+          _gpi::helper<0, arg_0_t>::build_tuple( i, tup, dest, args...);
+
+          dest.local_buffer[i - dest.start_i] =
+            _gpi::apply_helper<T, 0, true>::exec(func, tup);
+
+        }
+
+        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+
+        T* cont_ptr = (T*) dest.cont_seg_ptr;
+
+        for(size_t i = dest.start_i; i <= dest.end_i; ++i){
+
+          // TODO this should be done by memcpy
+          cont_ptr[i - dest.start_i] = dest.local_buffer[i - dest.start_i];
+
+          printf("i %lu : %d\n", i, cont_ptr[i - dest.start_i]);
+
+        }
+
+
+        // wait
+        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
       }
 
 

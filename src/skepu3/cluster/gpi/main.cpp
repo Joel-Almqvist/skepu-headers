@@ -13,33 +13,28 @@ struct Particle
 
 
 
-auto f = ([](int a, int b) {
-	return new char{};
-});
-
-
-
 int main(){
-
-	// auto x = []( int, long, bool ){};
-  // std::cout << typeid( function_argument_type< decltype(x), 0 >::type ).name() << '\n';
-  // std::cout << typeid( function_argument_type< decltype(x), 1 >::type ).name() << '\n';
-  // std::cout << typeid( function_argument_type< decltype(x), 2 >::type ).name() << '\n';
-	//using t1 = function_argument_type< decltype(x), 0 >::type;
-	//bool const b1 = std::is_same<t1, int>::value;
 
 
   skepu::Matrix<int> m1{4,4,1};
   skepu::Matrix<int> m2{4,4,2};
-  skepu::Matrix<int> m3{5,5,3};
+  skepu::Matrix<int> m3{4,4,3};
 
 	auto mult = skepu::Map<4>([](
-		skepu::Index1D i, skepu::Vec<int> a, int b, int c) int {
+		skepu::Index1D i, skepu::Vec<int> a, int b, double c) int {
 
-		return 5;
+		/*
+		std::cout << "index " << i.i << std::endl;
+		std::cout << "proxy " << a.test << std::endl;
+		std::cout << "b " << b << std::endl;
+		std::cout << "c " << c << std::endl;
+		*/
+
+		return 13;
 	});
 
-	mult.apply( m1, m2, m3, m3, 4);
+	mult.apply( m1, m2, m3, double{7.77});
+
 
   return 0;
 }
