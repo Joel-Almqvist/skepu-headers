@@ -37,7 +37,6 @@ namespace skepu{
     friend class _gpi::build_tup_util;
 
   private:
-
     static const int COMM_BUFFER_NR_ELEMS = 50;
 
     // Used to store two versions of the data so that Map may use a random access
@@ -277,7 +276,7 @@ namespace skepu{
       if(cont.start_i > start_i){
         // transfer up to our start_i
         transfered_obj = cont.start_i - start_i;
-        cont.comm_buffer_free_slot = transfered_obj;
+        cont.free_slot = transfered_obj;
 
         int first_owner = cont.get_owner(start_i);
         wait_ranks.clear();
@@ -301,7 +300,7 @@ namespace skepu{
         }
         wait_for_vclocks(op_nr);
 
-        cont.comm_buffer_free_slot += end_i - (cont.end_i + 1);
+        cont.free_slot += end_i - (cont.end_i + 1);
 
         cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, no_wait);
       }
@@ -418,17 +417,46 @@ namespace skepu{
       Last& last){
   }
 
+  long get_comm_offset(size_t inc_rank){
+    if(inc_rank != nr_nodes -1){
+      return norm_partition_comm_offset;
+    }
+    return last_partition_comm_offset;
+  }
 
+
+
+
+  /* i = The global index to fetch
+   * thead_offset = unique value for each thread to guarantee non interference
+  */
   T& get_no_sync(size_t i, int thread_offset){
+    // TODO Read more than one value to mimic cache behavior. Note that
+    // free_slot is always 0 and we may use the whole comm_buffer
 
     if(i >= start_i && i <= end_i){
+
       return ((T*) cont_seg_ptr)[i - start_i];
     }
-
     else{
+      int dest_rank = get_owner(i);
+      int dest_seg = segment_id + dest_rank - rank;
 
-      // TODO read and put in the free slot + offset space
+      gaspi_read(
+        segment_id,
+        comm_offset + sizeof(T) * (free_slot + thread_offset), // local offset
+        dest_rank,
+        dest_seg,
+        sizeof(T) * (i - step * dest_rank),
+        1 * sizeof(T),
+        queue,
+        GASPI_BLOCK
+      );
 
+      gaspi_wait(queue, GASPI_BLOCK);
+
+      //return ((T*) comm_seg_ptr) + free_slot + thread_offset;
+      return ((T*) comm_seg_ptr)[free_slot + thread_offset];
 
     }
 
@@ -446,7 +474,8 @@ namespace skepu{
     }
 
 
-
+    Matrix(const Matrix&) = delete;
+    Matrix& operator=(const Matrix&) = delete;
 
     Matrix(){
       std::cout << "Empty constructor called\n";
@@ -500,7 +529,7 @@ namespace skepu{
           + 2 * nr_nodes * sizeof(unsigned long)},
         GASPI_GROUP_ALL,
         GASPI_BLOCK,
-        GASPI_ALLOC_DEFAULT
+        GASPI_MEM_INITIALIZED
       ) == GASPI_SUCCESS);
 
 
@@ -511,11 +540,6 @@ namespace skepu{
 
       // Point vclock to the memory after communication segment
       vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_NR_ELEMS);
-
-      // TODO Ask Bernd, is this really necessary? Likely not
-      for(int i = 0; i < 2*nr_nodes; i++){
-        vclock[i] = op_nr;
-      }
 
       gaspi_queue_create(&queue, GASPI_BLOCK);
 

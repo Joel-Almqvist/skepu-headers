@@ -23,15 +23,10 @@ int main(){
 	auto mult = skepu::Map<4>([](
 		skepu::Index1D i, skepu::Vec<int> a, int b, double c) int {
 
-		/*
-		std::cout << "index " << i.i << std::endl;
-		std::cout << "proxy " << a.test << std::endl;
-		std::cout << "b " << b << std::endl;
-		std::cout << "c " << c << std::endl;
-		*/
-
-		return 13;
+		return a[i.i] + c;
 	});
+
+
 
 	mult.apply( m1, m2, m3, double{7.77});
 

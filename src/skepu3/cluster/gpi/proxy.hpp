@@ -38,22 +38,16 @@ namespace skepu{
     Vec(Matrix<T>& own){
       owner = &own;
 
-      test = 999;
     }
-
     // Is public to allow for bracket initialization
     Vec(){
-      test = -1;
     }
 
-    // TODO add operator []
-
-
-    int test;
+    T operator[](const size_t index){
+      return std::move(T{owner->get_no_sync(0, 0)});
+    };
 
   };
-
-
   namespace _gpi{
 
     // Functions to easier access the proxy type. Not currently used.

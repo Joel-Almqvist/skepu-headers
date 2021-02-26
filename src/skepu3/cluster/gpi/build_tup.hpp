@@ -92,7 +92,7 @@ namespace skepu{
       // every argument.
       template<typename Tup, typename Dest, typename Curr, typename... Rest>
       static void build_tuple( size_t i, Tup& tup, Dest& dest,
-        Curr curr, Rest&... rest)
+        Curr& curr, Rest&... rest)
       {
         build_tup_util::build_tuple_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
         helper<tup_arg_ctr + 1, T>::build_tuple( i, tup, dest, rest...);
@@ -113,7 +113,7 @@ namespace skepu{
       // every argument.
       template<typename Tup, typename Dest, typename Curr, typename... Rest>
       static void build_tuple( size_t i, Tup& tup, Dest& dest,
-        Curr curr, Rest&... rest)
+        Curr& curr, Rest&... rest)
       {
         build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, curr);
         helper<1, int>::build_tuple( i, tup, dest, curr, rest...);

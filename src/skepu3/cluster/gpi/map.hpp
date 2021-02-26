@@ -738,31 +738,6 @@ namespace skepu{
       }
 
 
-
-
-
-      /*
-      template<typename ... FooT>
-      struct get_skepu_val_t{
-        using type = std::false_type;
-      };
-
-
-      template<typename FooT>
-      struct get_skepu_val_t{
-        using type = typename FooT::is_skepu_container;
-      };
-      */
-
-
-
-      template<typename First, typename ... Rest>
-      struct foo{
-        //using type = std::tuple<>;
-      };
-
-
-
       template<typename DestCont, typename ... Args>
       void apply(DestCont& dest, Args&&... args)
       {
@@ -817,10 +792,7 @@ namespace skepu{
           // TODO this should be done by memcpy
           cont_ptr[i - dest.start_i] = dest.local_buffer[i - dest.start_i];
 
-          printf("i %lu : %d\n", i, cont_ptr[i - dest.start_i]);
-
         }
-
 
         // wait
         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);

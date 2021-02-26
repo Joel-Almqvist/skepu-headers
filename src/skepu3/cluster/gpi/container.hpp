@@ -34,7 +34,7 @@ namespace skepu{
       gaspi_pointer_t comm_seg_ptr;
       long comm_offset;
 
-      unsigned int comm_buffer_free_slot;
+      unsigned int free_slot;
 
       unsigned long op_nr;
 
@@ -57,7 +57,7 @@ namespace skepu{
 
         op_nr = 0;
         notif_ctr = 0;
-        comm_buffer_free_slot = 0;
+        free_slot = 0;
         curr_containers++;
         created_containers++;
       }
