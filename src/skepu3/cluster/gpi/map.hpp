@@ -8,6 +8,7 @@
 #include <deque>
 #include <utility>
 #include <mutex>
+#include <cstring>
 
 #include <omp.h>
 #include <GASPI.h>
@@ -771,6 +772,7 @@ namespace skepu{
         unsigned long this_op_nr = DestCont::max_op(dest, args...) + 1;
         DestCont::set_op_nr(this_op_nr, dest, args...);
 
+        // Build buffer performs synchronization checks
         dest.build_buffer(false, double{}, args...);
 
 
@@ -783,24 +785,13 @@ namespace skepu{
 
         }
 
+
         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
-        T* cont_ptr = (T*) dest.cont_seg_ptr;
+        std::memcpy(dest.cont_seg_ptr, dest.local_buffer, sizeof(T) * dest.local_size);
 
-        for(size_t i = dest.start_i; i <= dest.end_i; ++i){
-
-          // TODO this should be done by memcpy
-          cont_ptr[i - dest.start_i] = dest.local_buffer[i - dest.start_i];
-
-        }
-
-        // wait
-        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+        DestCont::set_op_nr(this_op_nr + 1, dest, args...);
       }
-
-
-
-
   };
 
 
