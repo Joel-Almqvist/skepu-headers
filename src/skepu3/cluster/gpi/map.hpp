@@ -756,7 +756,6 @@ namespace skepu{
 
         using T = typename DestCont::value_type;
 
-        arg_tup_t tup{};
 
         // We assume that no lambda-call is pure-local, we can deduce such
         // cases by checking if the lambda does not contain any random access
@@ -776,19 +775,44 @@ namespace skepu{
         dest.build_buffer(false, double{}, args...);
 
 
-        for(size_t i = dest.start_i; i <= dest.end_i; ++i){
+        #pragma omp parallel
+        {
+          arg_tup_t tup{};
 
-          _gpi::helper<0, arg_0_t>::build_tuple( i, tup, dest, args...);
+          DestCont::init_proxy_cache(omp_get_thread_num(), args...);
 
-          dest.local_buffer[i - dest.start_i] =
-            _gpi::apply_helper<T, 0, true>::exec(func, tup);
 
+          #pragma omp for schedule(static)
+          for(size_t i = dest.start_i; i <= dest.end_i; ++i){
+
+            _gpi::helper<0, arg_0_t>::build_tuple( i, tup, dest, args...);
+
+            dest.local_buffer[i - dest.start_i] =
+              _gpi::apply_helper<T, 0, true>::exec(func, tup);
+          }
+
+
+        #pragma omp single
+        {
+          // Due to the random access iterator we need a barrier,
+          // for more discussion read the long comment above
+          gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
         }
 
 
-        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+        size_t t_step = dest.local_size / omp_get_num_threads();
 
-        std::memcpy(dest.cont_seg_ptr, dest.local_buffer, sizeof(T) * dest.local_size);
+        size_t size = omp_get_thread_num() == omp_get_num_threads() -1 ?
+          t_step + dest.local_size % omp_get_num_threads() :
+          t_step;
+
+
+        std::memcpy(
+          (T*) dest.cont_seg_ptr + omp_get_thread_num() * t_step,
+          (T*) dest.local_buffer + omp_get_thread_num() * t_step,
+           sizeof(T) * size);
+
+        }
 
         DestCont::set_op_nr(this_op_nr + 1, dest, args...);
       }

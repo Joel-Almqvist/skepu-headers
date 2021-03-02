@@ -4,11 +4,12 @@
 #include <cassert>
 #include <vector>
 #include <array>
-#include <GASPI.h>
 #include <type_traits>
 #include <chrono>
 #include <thread>
 #include <cmath>
+
+#include <GASPI.h>
 
 #include "utils.hpp"
 #include "container.hpp"
@@ -30,6 +31,9 @@ namespace skepu{
     friend class Map1D;
     template<typename TT>
     friend class FilterClass;
+    template<typename TT>
+    friend class Matrix;
+
 
     template<typename TT>
     friend class Vec;
@@ -38,6 +42,8 @@ namespace skepu{
 
   private:
     static const int COMM_BUFFER_NR_ELEMS = 50;
+
+    static const int MAX_THREADS = 32;
 
     // Used to store two versions of the data so that Map may use a random access
     // type within its function.
@@ -69,9 +75,13 @@ namespace skepu{
     // TODO remove this, norm_partition_size == step
     int step;
 
+    size_t* proxy_cache;
 
-    int get_owner(int index){
-      return std::min((int) std::floor((float) index / step), nr_nodes - 1);
+    int get_owner(size_t index){
+      if(index >= global_size){
+        return -1;
+      }
+      return std::min((int) std::floor(index / (double) step), nr_nodes - 1);
     }
 
 
@@ -276,7 +286,6 @@ namespace skepu{
       if(cont.start_i > start_i){
         // transfer up to our start_i
         transfered_obj = cont.start_i - start_i;
-        cont.free_slot = transfered_obj;
 
         int first_owner = cont.get_owner(start_i);
         wait_ranks.clear();
@@ -299,8 +308,6 @@ namespace skepu{
           wait_ranks.push_back(i);
         }
         wait_for_vclocks(op_nr);
-
-        cont.free_slot += end_i - (cont.end_i + 1);
 
         cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, no_wait);
       }
@@ -425,43 +432,134 @@ namespace skepu{
   }
 
 
-
-
-  /* i = The global index to fetch
-   * thead_offset = unique value for each thread to guarantee non interference
-  */
-  T& get_no_sync(size_t i, int thread_offset){
-    // TODO Read more than one value to mimic cache behavior. Note that
-    // free_slot is always 0 and we may use the whole comm_buffer
-
-    if(i >= start_i && i <= end_i){
-
-      return ((T*) cont_seg_ptr)[i - start_i];
+  size_t get_end(size_t inc_rank){
+    if(inc_rank == nr_nodes - 1){
+      return global_size - 1;
     }
     else{
-      int dest_rank = get_owner(i);
-      int dest_seg = segment_id + dest_rank - rank;
+      return (inc_rank + 1) * step - 1;
+    }
+  }
 
-      gaspi_read(
+
+  size_t get_start(size_t inc_rank){
+    return inc_rank * step;
+  }
+
+
+
+  template<typename Arg>
+  static void init_proxy_helper(double, int tnum, Matrix<Arg>& m){
+      m.proxy_cache[2 * tnum] = size_t{0};
+      m.proxy_cache[2 * tnum + 1] = size_t{0};
+    }
+
+  template<typename Arg>
+  static void init_proxy_helper(int, int tnum, Arg&){}
+
+
+  template<typename First, typename ... Rest>
+  static void init_proxy_cache(int tnum, First& first, Rest&... rest){
+    init_proxy_helper(double{}, tnum, first);
+    init_proxy_cache(tnum, rest...);
+  }
+
+  template<typename First>
+  static void init_proxy_cache(int tnum, First& first){
+    init_proxy_helper(double{}, tnum, first);
+  }
+
+
+  /* Fetches a value from the local container, the cache or builds the cache
+  * and returns the value. Divides the communcation segment into equal chunks
+  * which all threads use as a cache for remote values. The cache segments are
+  * contiguous values and first and last values are stored in
+  * proxy_cache[thread_number].
+  */
+  T& proxy_get(const size_t i, int tnum, int thread_amount){
+
+    // Which values are cached
+    size_t& start = proxy_cache[2 * tnum];
+    size_t& end = proxy_cache[1 + 2 * tnum];
+
+    size_t size = Matrix<T>::COMM_BUFFER_NR_ELEMS / thread_amount;
+    T* comm_buffer = ((T*) comm_seg_ptr ) + size * tnum;
+
+    if(i >= start_i && i <= end_i){
+      return ((T*) cont_seg_ptr)[i - start_i];
+    }
+    // Is the cache initialized and are we within it
+    else if(!(start == 0 && end == 0) && i >= start && i <= end){
+      // cached value
+      return comm_buffer[i - start];
+    }
+    else{
+      // Case - Fill the cache
+
+      size_t dest_rank = get_owner(i);
+
+      // The container's limits
+      size_t end_max = get_end(dest_rank);
+      size_t start_max = get_start(dest_rank);
+
+      size_t t_step = (size - 1) / 2;
+
+      size_t underflow_check = i >= t_step ? i - t_step : 0;
+
+      // The cache's limits
+      size_t end_lim = std::min(end_max, i + t_step);
+      size_t start_lim = std::max(start_max, underflow_check);
+
+
+      if(end_lim - start_lim < t_step * 2){
+        size_t unused_buffer = size - 1 - end_lim + start_lim;
+
+        underflow_check = underflow_check >= unused_buffer ?
+        underflow_check - unused_buffer :
+        0;
+
+        end_lim = std::min(end_max, i + t_step + unused_buffer);
+        start_lim = std::max(start_max, underflow_check);
+
+      }
+      else if(get_owner(end_lim + 1) == dest_rank){
+        end_lim++;
+
+      }
+      else if(get_owner(start_lim - 1) == dest_rank){
+        start_lim++;
+      }
+
+      gaspi_read_notify(
         segment_id,
-        comm_offset + sizeof(T) * (free_slot + thread_offset), // local offset
+        comm_offset + sizeof(T) * size * tnum, // local offset
         dest_rank,
-        dest_seg,
-        sizeof(T) * (i - step * dest_rank),
-        1 * sizeof(T),
+        segment_id + dest_rank - rank, // dest_seg
+        sizeof(T) * (start_lim - step * dest_rank), // remote offset
+        sizeof(T) * (1 + end_lim - start_lim), // size
+        tnum, // notif id
         queue,
         GASPI_BLOCK
       );
+      start = start_lim;
+      end = end_lim;
 
-      gaspi_wait(queue, GASPI_BLOCK);
+      gaspi_notification_id_t notify_id;
+      gaspi_notification_t notify_val;
 
-      //return ((T*) comm_seg_ptr) + free_slot + thread_offset;
-      return ((T*) comm_seg_ptr)[free_slot + thread_offset];
+      gaspi_notify_waitsome(
+        segment_id,
+        tnum ,
+        1,
+        &notify_id,
+        GASPI_BLOCK
+        );
 
+      gaspi_notify_reset(segment_id, notify_id, &notify_val);
+      return comm_buffer[i - start];
     }
+  };
 
-
-  }
 
 
   public:
@@ -477,9 +575,6 @@ namespace skepu{
     Matrix(const Matrix&) = delete;
     Matrix& operator=(const Matrix&) = delete;
 
-    Matrix(){
-      std::cout << "Empty constructor called\n";
-    }
 
     Matrix(int rows, int cols){
       // Partition the matrix so that each rank receivs an even
@@ -536,13 +631,13 @@ namespace skepu{
       gaspi_segment_ptr(segment_id, &cont_seg_ptr);
       comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
 
-      local_buffer = (T*) malloc(local_size * sizeof(T));
+      local_buffer = (T*) malloc(local_size * sizeof(T) + sizeof(size_t) * 2 * MAX_THREADS);
+      proxy_cache = (size_t*) (local_buffer + local_size);
 
       // Point vclock to the memory after communication segment
       vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_NR_ELEMS);
 
       gaspi_queue_create(&queue, GASPI_BLOCK);
-
     };
 
 
@@ -550,6 +645,9 @@ namespace skepu{
       set(init);
     }
 
+    ~Matrix(){
+      delete local_buffer;
+    }
 
     void set(T scalar){
       for(int i = 0; i < local_size; i ++){
