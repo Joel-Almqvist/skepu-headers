@@ -18,6 +18,7 @@
 #include "proxy.hpp"
 #include "build_tup.hpp"
 
+
 namespace skepu{
 
 
@@ -649,7 +650,7 @@ namespace skepu{
 
 
      template<typename DestCont, typename ... Conts>
-      auto operator()(DestCont& dest_cont, Conts&... conts) ->
+      auto apply_old(DestCont& dest_cont, Conts&... conts) ->
       decltype(
         std::declval<typename DestCont::is_skepu_container>(),
         std::declval<void>()){
@@ -702,7 +703,9 @@ namespace skepu{
 
             #pragma omp single
             {
-              dest_cont.build_buffer(true, double{}, conts...);
+              // TODO build buffer has been modified and needs to be
+              // repurposed for this usage
+              //dest_cont.build_buffer(true, double{}, conts...);
             }
               // After the above barrier we guarantee that:
             // 1 -  The pure local operations are done
@@ -740,7 +743,7 @@ namespace skepu{
 
 
       template<typename DestCont, typename ... Args>
-      void apply(DestCont& dest, Args&&... args)
+      void operator()(DestCont& dest, Args&&... args)
       {
 
         using arg_0_t = typename std::remove_reference<
@@ -759,10 +762,10 @@ namespace skepu{
 
         // We assume that no lambda-call is pure-local, we can deduce such
         // cases by checking if the lambda does not contain any random access
-        // iterator. However the old implementation can mimic this behavior
-        // by capturing the indeces and constants in the lambda. The old
-        // version should then be updated to match the new interface as it
-        // already implements speedups for handling the local work first.
+        // iterator. The old variadic solution already have performance
+        // improvement regarding this and hence the easiest solution is to
+        // update it to allow for indeces and let it handle all calls with no
+        // random access iterator.
         //
         // Summarized: Any calls without a random acess interator should be
         // forwarded to the old solution in the future. Here we assume that
@@ -771,9 +774,14 @@ namespace skepu{
         unsigned long this_op_nr = DestCont::max_op(dest, args...) + 1;
         DestCont::set_op_nr(this_op_nr, dest, args...);
 
-        // Build buffer performs synchronization checks
-        dest.build_buffer(false, double{}, args...);
 
+        // Pre fetch all remote values we know that we want
+        _gpi::build_buff_helper<0, arg_tup_t, typename _gpi::is_skepu_proxy_type<arg_0_t>::type>
+        ::build(false, double{}, dest, args...);
+
+        // We must enforce strict synchronization since the random access
+        // iterator may access any element.
+        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
         #pragma omp parallel
         {
@@ -787,8 +795,8 @@ namespace skepu{
 
             _gpi::helper<0, arg_0_t>::build_tuple( i, tup, dest, args...);
 
-            dest.local_buffer[i - dest.start_i] =
-              _gpi::apply_helper<T, 0, true>::exec(func, tup);
+            _gpi::apply_helper<T, 0, true>::exec(
+              dest.local_buffer + i - dest.start_i, func, tup);
           }
 
 
@@ -798,7 +806,6 @@ namespace skepu{
           // for more discussion read the long comment above
           gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
         }
-
 
         size_t t_step = dest.local_size / omp_get_num_threads();
 

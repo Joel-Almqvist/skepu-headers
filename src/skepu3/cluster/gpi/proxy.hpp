@@ -46,10 +46,35 @@ namespace skepu{
     }
 
     T operator[](const size_t i){
-      return owner->proxy_get(i, omp_get_thread_num(), omp_get_num_threads());
+      T obj = owner->proxy_get(i, omp_get_thread_num(), omp_get_num_threads());
+      return obj;
     }
   };
   namespace _gpi{
+
+    template<typename T>
+    auto is_proxy_t(int) -> decltype(
+      std::declval<typename T::is_proxy_type>(),
+      std::true_type{}
+      ) {
+        throw std::logic_error("Function is used only for SFINAE, it should never be called");
+      return std::true_type{};
+    }
+
+    template<typename T>
+    std::false_type is_proxy_t(double){
+      throw std::logic_error("Function is used only for SFINAE, it should never be called");
+      return std::false_type{};
+    }
+
+
+    template<typename T>
+    struct is_skepu_proxy_type{
+      using type = decltype(is_proxy_t<T>(int{}));
+    };
+
+
+
 
 
     // Functions to easier access the proxy type. Not currently used.

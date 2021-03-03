@@ -17,6 +17,10 @@
 namespace skepu{
   namespace _gpi{
     struct build_tup_util;
+
+
+    template<int, typename Tup, typename T>
+    struct build_buff_helper;
   }
 
   template<typename T>
@@ -39,6 +43,10 @@ namespace skepu{
     friend class Vec;
 
     friend class _gpi::build_tup_util;
+
+
+    template<int, typename TTup, typename TT>
+    friend class _gpi::build_buff_helper;
 
   private:
     static const int COMM_BUFFER_NR_ELEMS = 50;
@@ -262,23 +270,13 @@ namespace skepu{
       }
     };
 
-
-    template<typename First, typename ... Rest>
-    void build_buffer(bool no_wait, double SFINAE_param, Matrix<First>& first, Rest&... rest){
-      build_buffer_helper(no_wait, first);
-      build_buffer(no_wait, double{}, rest...);
-    }
-
-    template<typename First, typename ... Rest>
-    void build_buffer(bool no_wait, int SFINAE_PARAM, First& first, Rest&... rest){
-      build_buffer(no_wait, double{}, rest...);
-    }
-
-    template<typename Sink>
-    void build_buffer(bool no_wait, Sink sink){
-    }
-
-
+    /* Fetches all indeces between our own start_i to end_i from the remote
+    * container cont. The values are put cont's communication buffer.
+    *
+    * The no_wait argument indicates whether we wait for the read to finish
+    * or not. We may still have to wait for the remote ranks to reach our
+    * current state.
+    */
     template<typename Cont>
     void build_buffer_helper(bool no_wait, Cont& cont){
       int transfered_obj = 0;
@@ -537,7 +535,7 @@ namespace skepu{
         segment_id + dest_rank - rank, // dest_seg
         sizeof(T) * (start_lim - step * dest_rank), // remote offset
         sizeof(T) * (1 + end_lim - start_lim), // size
-        tnum, // notif id
+        tnum , // notif id
         queue,
         GASPI_BLOCK
       );
@@ -556,6 +554,7 @@ namespace skepu{
         );
 
       gaspi_notify_reset(segment_id, notify_id, &notify_val);
+
       return comm_buffer[i - start];
     }
   };
