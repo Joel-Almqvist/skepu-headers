@@ -33,12 +33,14 @@ namespace skepu{
 
     Vec(Matrix<T>& own){
       owner = &own;
+      size = owner->global_size;
     }
 
 
   public:
     using is_proxy_type = std::true_type;
 
+    size_t size;
 
     // Is public to allow for bracket initialization used when creating
     // the arguments tuple in map

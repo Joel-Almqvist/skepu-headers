@@ -150,6 +150,8 @@ namespace skepu{
           }
     };
 
+
+    // The current argument type is a proxy and we never want to call build_buffer
     template<int ctr, typename Tup, typename T>
     struct build_buff_helper{
 
@@ -170,7 +172,8 @@ namespace skepu{
 
     };
 
-
+    // The current lambda argument is not a proxy type, but we need to make sure
+    // that it also is not a constant.
     template<int ctr, typename Tup>
     struct build_buff_helper<ctr, Tup, std::false_type>{
 
@@ -186,11 +189,28 @@ namespace skepu{
         ::build(no_wait, double{}, dest, rest...);
       }
 
+
+      // Not a proxy and not a matrix -> constant
+      template<typename Dest, typename First, typename ... Rest>
+      static void build(bool no_wait, double SFINAE_param, Dest& dest,
+          First&& first, Rest&... rest){
+
+        using NextT = decltype(std::get<ctr + 1>(std::declval<Tup>()));
+        build_buff_helper<ctr + 1, Tup, typename is_skepu_proxy_type<NextT>::type>
+        ::build(no_wait, double{}, dest, rest...);
+      }
+
       template<typename Dest, typename First>
       static void build(bool no_wait, double SFINAE_param, Dest& dest,
           Matrix<First>& first){
         dest.build_buffer_helper(no_wait, first);
       }
+
+      // Not a proxy and not a matrix -> constant
+      template<typename Dest, typename First>
+      static void build(bool no_wait, double SFINAE_param, Dest& dest,
+          First&& first){}
+
     };
   } // end of namespace _gpi
 }
