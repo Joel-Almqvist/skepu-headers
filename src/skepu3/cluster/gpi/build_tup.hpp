@@ -106,12 +106,14 @@ namespace skepu{
       static void build_tuple( size_t i, Tup& tup, Dest& dest, Curr& curr)
       {
         build_tup_util::build_tuple_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
-
       }
+
+
     };
 
     template<>
     struct helper<0, Index1D>{
+
 
       // Traverses through the argument list and calls a helper for function on
       // every argument.
@@ -119,9 +121,22 @@ namespace skepu{
       static void build_tuple( size_t i, Tup& tup, Dest& dest,
         Curr& curr, Rest&... rest)
       {
-        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, curr);
+        // We won't use the curr argument in this call but we want another
+        // skepu::Matrix for overload resoultion so send in dest twice.
+        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+
         helper<1, int>::build_tuple( i, tup, dest, curr, rest...);
       }
+
+
+      template<typename Tup, typename Dest, typename... Rest>
+      static void build_tuple( size_t i, Tup& tup, Dest& dest)
+      {
+        // Throw in dest as argument twice to help with SFINAE
+        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+      }
+
+
     };
 
 
@@ -170,6 +185,12 @@ namespace skepu{
       static void build(bool no_wait, int SFINAE_param, Dest& dest,
           Matrix<First>& first){}
 
+
+      // Sink
+      template<typename Dest>
+      static void build(bool no_wait, double SFINAE_param, Dest& dest){}
+
+
     };
 
     // The current lambda argument is not a proxy type, but we need to make sure
@@ -210,6 +231,12 @@ namespace skepu{
       template<typename Dest, typename First>
       static void build(bool no_wait, double SFINAE_param, Dest& dest,
           First&& first){}
+
+      // Sink
+      template<typename Dest>
+      static void build(bool no_wait, double SFINAE_param, Dest& dest){}
+
+
 
     };
   } // end of namespace _gpi

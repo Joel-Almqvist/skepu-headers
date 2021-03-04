@@ -482,6 +482,9 @@ namespace skepu{
     init_proxy_helper(double{}, tnum, first);
   }
 
+  // Sink
+  static void init_proxy_cache(int tnum){}
+
 
   /* Fetches a value from the local container, the cache or builds the cache
   * and returns the value. Divides the communcation segment into equal chunks
