@@ -779,9 +779,6 @@ namespace skepu{
         _gpi::build_buff_helper<0, arg_tup_t, typename _gpi::is_skepu_proxy_type<arg_0_t>::type>
         ::build(false, double{}, dest, args...);
 
-        // We must enforce strict synchronization since the random access
-        // iterator may access any element.
-        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
         #pragma omp parallel
         {

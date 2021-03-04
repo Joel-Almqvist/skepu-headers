@@ -46,10 +46,12 @@ namespace skepu{
     }
 
     T operator[](const size_t i){
-      T obj = owner->proxy_get(i, omp_get_thread_num(), omp_get_num_threads());
-      return obj;
+      return owner->proxy_get(i, omp_get_thread_num(), omp_get_num_threads());
     }
   };
+
+
+
   namespace _gpi{
 
     template<typename T>

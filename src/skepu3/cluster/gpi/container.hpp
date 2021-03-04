@@ -1,7 +1,9 @@
 #ifndef CONTAINER_HPP
 #define CONTAINER_HPP
-#include <GASPI.h>
 #include <vector>
+#include <mutex>
+
+#include <GASPI.h>
 
 #include "environment.hpp"
 
@@ -42,6 +44,9 @@ namespace skepu{
 
       // Must be initialized by derived classes
       unsigned long* vclock;
+
+      std::mutex vclock_r_lock;
+      std::mutex vclock_w_lock;
 
       Container() : wait_ranks{}{
 

@@ -238,14 +238,26 @@ namespace skepu{
     };
 
 
+    bool vclock_is_ready(size_t wait_op_nr, int wait_rank){
+      bool b;
+      vclock_r_lock.lock();
+      vclock[wait_rank] >= wait_op_nr;
+      vclock_r_lock.unlock();
+      return b;
+    }
+
+
+
     void wait_for_vclocks(unsigned long wait_val){
       wait_for_vclocks(wait_val, *this);
       }
+
 
     template<typename RemoteContT>
     void wait_for_vclocks(unsigned long wait_val, RemoteContT& remote_cont){
       int curr_rank;
       int curr_seg_id;
+      bool done;
       const int min_seg_id = segment_id - rank;
 
       for(int i = 0; i < wait_ranks.size(); i++){
@@ -257,9 +269,12 @@ namespace skepu{
         }
 
         while(true){
+          vclock_r_lock.lock();
           get_vclock(curr_rank, curr_seg_id, remote_cont.norm_vclock_offset,
             remote_cont.last_partition_vclock_offset);
-          if(vclock[curr_rank] >= wait_val){
+            done = vclock[curr_rank] >= wait_val;
+          vclock_r_lock.unlock();
+          if(done){
             break;
           }
           else{
@@ -527,6 +542,18 @@ namespace skepu{
       else if(get_owner(start_lim - 1) == dest_rank){
         start_lim++;
       }
+
+      bool remote_ready = vclock_is_ready(op_nr, dest_rank);
+      if(!remote_ready){
+        vclock_w_lock.lock();
+
+        wait_ranks.clear();
+        wait_ranks.push_back(dest_rank);
+        wait_for_vclocks(op_nr);
+
+        vclock_w_lock.unlock();
+      }
+
 
       gaspi_read_notify(
         segment_id,

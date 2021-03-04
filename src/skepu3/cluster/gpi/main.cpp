@@ -21,12 +21,12 @@ int main(){
 
 
   skepu::Matrix<int> m1{7,7,1};
-  skepu::Matrix<int> m2{7,7,2};
-  skepu::Matrix<Particle> m3{7,7};
+	 skepu::Matrix<int> m2{7,7,2};
+   skepu::Matrix<Particle> m3{7,7};
 
 	auto mult = skepu::Map<3>([](
 		skepu::Index1D i, int b, skepu::Vec<Particle> p) int {
-		return b + p[48 - i.i].x;
+		return b +p[48 - i.i].x;
 	});
 
 	auto init = skepu::Map<2>(lambda);
