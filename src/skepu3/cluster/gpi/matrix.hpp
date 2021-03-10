@@ -710,6 +710,12 @@ namespace skepu{
     }
 
 
+    size_t size(){
+      return global_size;
+    }
+
+
+
     // Gets a specific value from the Matrix. Either fetch the remote value
     // or wait untill all remotes have read our local value, then return.
     //
@@ -805,7 +811,7 @@ namespace skepu{
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
           for(int j = 0; j < local_size; j++){
-            std::cout << lamb(((T*) cont_seg_ptr)[j]) << ",  ";
+            std::cout << lamb(((T*) cont_seg_ptr)[j]) << "\n";
           }
           std::cout << std::endl;
         }
