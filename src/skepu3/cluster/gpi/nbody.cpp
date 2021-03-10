@@ -3,8 +3,7 @@
 #include <iomanip>
 #include <cmath>
 #include <sstream>
-
-#include <iomanip>
+#include <ctime>
 
 
 #include <skepu>
@@ -99,45 +98,6 @@ Particle init(skepu::Index1D index, size_t np)
 }
 
 
-
-// A helper function to write particle output values to standard output stream.
-// void save_step(skepu::Matrix<Particle> &particles, std::ostream &os = std::cout)
-// {
-// 	int i = 0;
-//
-// 	os
-// 		<< std::setw(4) << "#" << "  "
-// 		<< std::setw(15) << "x"
-// 		<< std::setw(15) << "y"
-// 		<< std::setw(15) << "z"
-// 		<< std::setw(15) << "vx"
-// 		<< std::setw(15) << "vy"
-// 		<< std::setw(15) << "vz" << "\n"
-// 		<< std::string(96,'=') << "\n";
-// 	for (Particle &p : particles)
-// 	{
-// 		os << std::setw( 4) << i++ << ": "
-// 			<< std::setw(15) << p.x
-// 			<< std::setw(15) << p.y
-// 			<< std::setw(15) << p.z
-// 			<< std::setw(15) << p.vx
-// 			<< std::setw(15) << p.vy
-// 			<< std::setw(15) << p.vz << "\n";
-// 	}
-// }
-
-//! A helper function to write particle output values to a file.
-// void save_step(skepu::Matrix<Particle> &particles, const std::string &filename)
-// {
-// 	std::ofstream out(filename);
-//
-// 	if (out.is_open())
-// 		save_step(particles, out);
-// 	else
-// 		std::cerr << "Error: cannot open this file: " << filename << "\n";
-// }
-
-
 auto nbody_init = skepu::Map<2>(init);
 auto nbody_simulate_step = skepu::Map<3>(move);
 
@@ -169,20 +129,37 @@ int main(int argc, char *argv[])
 	}
   */
 
-	//const size_t np = std::stoul(argv[1]);
-	//const size_t iterations = std::stoul(argv[2]);
+	size_t np;
+  size_t iterations;
+
+  if(argc == 3){
+    std::cout << "== 3\n";
+    np = std::stoul(argv[1]);
+    iterations = std::stoul(argv[2]);
+  }
+  else{
+    np = 32;
+    iterations = 10;
+  }
+
 	//auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[3])};
 
-  size_t np = 32;
-  size_t iterations = 10;
+  auto start = std::chrono::system_clock::now();
 
 	// Particle vectors....
 	skepu::Matrix<Particle> particles(std::sqrt(np), std::sqrt(np));
-
+  
 	nbody(particles, iterations);
 
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end-start;
+
+  std::cout << "Exec time = " << elapsed_seconds.count() << " np = " << np
+  << ", iterations = " << iterations << std::endl;
+
+  /*
   auto par_to_str = [](Particle p) -> std::string{
-    return "m = "+ std::to_string(p.m) +
+    return "m = "+ std::to_string(p.m).substr(0,5) +
       ", x = " + std::to_string(p.x).substr(0,5) +
       ", y = " + std::to_string(p.y).substr(0,5) +
       ", z = " + std::to_string(p.z).substr(0,5) +
@@ -191,15 +168,8 @@ int main(int argc, char *argv[])
       ", vz = " + std::to_string(p.vz).substr(0,5);
   };
 
-  std::cout << std::setprecision(2) << std::fixed;
   particles.print(par_to_str);
-
-	//std::stringstream outfile2;
-	//outfile2 << "output" << spec.type() << ".txt";
-
-	//particles.flush();
-	//if(!skepu::cluster::mpi_rank())
-		//save_step(particles, outfile2.str());
+  */
 
 	return 0;
 }
