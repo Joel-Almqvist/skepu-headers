@@ -101,10 +101,10 @@ Particle init(skepu::Index1D index, size_t np)
 auto nbody_init = skepu::Map<2>(init);
 auto nbody_simulate_step = skepu::Map<3>(move);
 
-void nbody(skepu::Matrix<Particle> &particles, size_t iterations)
+void nbody(skepu::Matrix<Particle> &particles, int c, int r, size_t iterations)
 {
 	size_t np = particles.size();
-	skepu::Matrix<Particle> doublebuffer(std::sqrt(np), std::sqrt(np));
+	skepu::Matrix<Particle> doublebuffer(c, r);
 
 	//if (spec) skepu::setGlobalBackendSpec(*spec);
 
@@ -129,16 +129,19 @@ int main(int argc, char *argv[])
 	}
   */
 
-	size_t np;
+	int c;
+	int r;
+
   size_t iterations;
 
-  if(argc == 3){
-    std::cout << "== 3\n";
-    np = std::stoul(argv[1]);
-    iterations = std::stoul(argv[2]);
+  if(argc == 4){
+    c = std::stoul(argv[1]);
+		r = std::stoul(argv[2]);
+    iterations = std::stoul(argv[3]);
   }
   else{
-    np = 32;
+    c = 8;
+		r = 8;
     iterations = 10;
   }
 
@@ -147,15 +150,15 @@ int main(int argc, char *argv[])
   auto start = std::chrono::system_clock::now();
 
 	// Particle vectors....
-	skepu::Matrix<Particle> particles(std::sqrt(np), std::sqrt(np));
-  
-	nbody(particles, iterations);
+	skepu::Matrix<Particle> particles(c, r);
+
+	nbody(particles, c, r, iterations);
 
   auto end = std::chrono::system_clock::now();
   std::chrono::duration<double> elapsed_seconds = end-start;
 
-  std::cout << "Exec time = " << elapsed_seconds.count() << " np = " << np
-  << ", iterations = " << iterations << std::endl;
+  std::cout << "Exec time = " << elapsed_seconds.count() << " c = " << c
+  << ", r = " << r <<", iterations = " << iterations << std::endl;
 
   /*
   auto par_to_str = [](Particle p) -> std::string{
