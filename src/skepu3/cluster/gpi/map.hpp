@@ -774,11 +774,9 @@ namespace skepu{
         unsigned long this_op_nr = DestCont::max_op(dest, args...) + 1;
         DestCont::set_op_nr(this_op_nr, dest, args...);
 
-
         // Pre fetch all remote values we know that we want
         _gpi::build_buff_helper<0, arg_tup_t, typename _gpi::is_skepu_proxy_type<arg_0_t>::type>
         ::build(false, double{}, dest, args...);
-
 
         #pragma omp parallel
         {

@@ -49,7 +49,16 @@ namespace skepu{
     friend class _gpi::build_buff_helper;
 
   private:
-    static const int COMM_BUFFER_NR_ELEMS = 50;
+
+    /* These user parameter determines how much memory is given for storing
+    *  remote values. The parameters COMM_BUFFER_SWAP_ELEMS and COMM_BUFFER_ELEMS
+    *  indicates how much of the total memory is given to the build_buffer
+    *  (which pre fetches remote values during Map) versus the proxy class.
+    *  The proxy class uses the memory as a cache for remote values.
+    */
+    static const int COMM_BUFFER_TOT_ELEMS = 100;
+    static const int COMM_BUFFER_SWAP_ELEMS = 20;
+    static const int COMM_BUFFER_ELEMS = COMM_BUFFER_TOT_ELEMS  - COMM_BUFFER_SWAP_ELEMS;
 
     static const int MAX_THREADS = 32;
 
@@ -59,6 +68,11 @@ namespace skepu{
 
     int local_size;
     long global_size;
+
+
+    size_t swap_space_offset;
+    size_t comm_offset;
+    size_t comm_size;
 
     // Global information about the container
     int last_partition_size;
@@ -73,8 +87,6 @@ namespace skepu{
 
     // This object's offset
     long vclock_offset;
-
-    long unsigned comm_size;
 
     // Indiciates which indeces this partition handles
     long start_i;
@@ -279,7 +291,7 @@ namespace skepu{
           }
           else{
             // Sleep
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
           }
         }
       }
@@ -296,6 +308,10 @@ namespace skepu{
     void build_buffer_helper(bool no_wait, Cont& cont){
       int transfered_obj = 0;
 
+      // Note that the field swap_space_offset is the offset in relation to
+      // the start of the whole gaspi_segment
+      size_t swap_offset = COMM_BUFFER_ELEMS * sizeof(T);
+
       if(cont.start_i > start_i){
         // transfer up to our start_i
         transfered_obj = cont.start_i - start_i;
@@ -309,7 +325,7 @@ namespace skepu{
         wait_for_vclocks(op_nr);
 
         // read range is inclusive
-        cont.read_range(start_i, cont.start_i - 1, 0, cont, no_wait);
+        cont.read_range(start_i, cont.start_i - 1, swap_offset, cont, no_wait);
       }
 
       if(cont.end_i < end_i){
@@ -322,7 +338,8 @@ namespace skepu{
         }
         wait_for_vclocks(op_nr);
 
-        cont.read_range(cont.end_i + 1, end_i, transfered_obj * sizeof(T), cont, no_wait);
+        cont.read_range(cont.end_i + 1, end_i, swap_offset +
+            transfered_obj * sizeof(T), cont, no_wait);
       }
     }
 
@@ -498,7 +515,7 @@ namespace skepu{
     size_t& start = proxy_cache[2 * tnum];
     size_t& end = proxy_cache[1 + 2 * tnum];
 
-    size_t size = Matrix<T>::COMM_BUFFER_NR_ELEMS / thread_amount;
+    size_t size = Matrix<T>::COMM_BUFFER_ELEMS / thread_amount;
     T* comm_buffer = ((T*) comm_seg_ptr ) + size * tnum;
 
     if(i >= start_i && i <= end_i){
@@ -556,28 +573,46 @@ namespace skepu{
 
         vclock_w_lock.unlock();
       }
+      return comm_buffer[i - start];
 
-
-      gaspi_read_notify(
-        segment_id,
-        comm_offset + sizeof(T) * size * tnum, // local offset
-        dest_rank,
-        segment_id + dest_rank - rank, // dest_seg
-        sizeof(T) * (start_lim - step * dest_rank), // remote offset
-        sizeof(T) * (1 + end_lim - start_lim), // size
-        tnum , // notif id
-        queue,
-        GASPI_BLOCK
-      );
       start = start_lim;
       end = end_lim;
 
       gaspi_notification_id_t notify_id;
       gaspi_notification_t notify_val;
 
+      auto res = gaspi_read_notify(
+        segment_id,
+        comm_offset + sizeof(T) * size * tnum, // local offset
+        dest_rank,
+        segment_id + dest_rank - rank, // dest_seg
+        sizeof(T) * (start_lim - step * dest_rank), // remote offset
+        sizeof(T) * (1 + end_lim - start_lim), // size
+        tnum, // notif id
+        queue,
+        GASPI_BLOCK
+      );
+
+      if(res == GASPI_QUEUE_FULL){
+        gaspi_wait(queue, GASPI_BLOCK);
+
+        res = gaspi_read_notify(
+          segment_id,
+          comm_offset + sizeof(T) * size * tnum, // local offset
+          dest_rank,
+          segment_id + dest_rank - rank, // dest_seg
+          sizeof(T) * (start_lim - step * dest_rank), // remote offset
+          sizeof(T) * (1 + end_lim - start_lim), // size
+          tnum, // notif id
+          queue,
+          GASPI_BLOCK
+        );
+        assert(res == GASPI_SUCCESS);
+      }
+
       gaspi_notify_waitsome(
         segment_id,
-        tnum ,
+        tnum,
         1,
         &notify_id,
         GASPI_BLOCK
@@ -630,14 +665,15 @@ namespace skepu{
 
 
       comm_offset = sizeof(T) * local_size;
+      swap_space_offset = comm_offset + sizeof(T) * COMM_BUFFER_ELEMS;
+      comm_size = sizeof(T) * COMM_BUFFER_TOT_ELEMS;
+
       last_partition_comm_offset = sizeof(T) * last_partition_size;
       norm_partition_comm_offset = sizeof(T) * norm_partition_size;
 
 
       // Guarantee that the comm buffer has size enough for Reduce to work
-      assert(COMM_BUFFER_NR_ELEMS >= ((int) std::ceil(std::log2(nr_nodes))) + 1);
-
-      comm_size = sizeof(T) * COMM_BUFFER_NR_ELEMS;
+      assert(COMM_BUFFER_ELEMS >= ((int) std::ceil(std::log2(nr_nodes))) + 1);
 
 
       norm_vclock_offset = sizeof(T) * norm_partition_size + comm_size;
@@ -649,7 +685,7 @@ namespace skepu{
       // 2 * nr_nodes * sizeof(unsigned long) is the size of the vector clock
       assert(gaspi_segment_create(
         segment_id,
-        gaspi_size_t{sizeof(T) * local_size + comm_size
+        gaspi_size_t{sizeof(T) * (local_size + COMM_BUFFER_TOT_ELEMS)
           + 2 * nr_nodes * sizeof(unsigned long)},
         GASPI_GROUP_ALL,
         GASPI_BLOCK,
@@ -664,7 +700,7 @@ namespace skepu{
       proxy_cache = (size_t*) (local_buffer + local_size);
 
       // Point vclock to the memory after communication segment
-      vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_NR_ELEMS);
+      vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_TOT_ELEMS);
 
       gaspi_queue_create(&queue, GASPI_BLOCK);
     };

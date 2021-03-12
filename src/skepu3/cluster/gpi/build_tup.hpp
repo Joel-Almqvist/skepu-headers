@@ -52,11 +52,11 @@ namespace skepu{
         using T = typename Matrix<Curr>::value_type;
 
         T* val_ptr = (T*) curr.cont_seg_ptr;
-        T* comm_ptr = (T*) curr.comm_seg_ptr;
+        T* swap_ptr = ((T*) curr.comm_seg_ptr) + Matrix<Curr>::COMM_BUFFER_ELEMS;
 
 
         if(curr.start_i > i){
-          std::get<tup_arg_ctr>(tup) = comm_ptr[i - dest.start_i];
+          std::get<tup_arg_ctr>(tup) = swap_ptr[i - dest.start_i];
         }
 
         else if (i > curr.end_i){
@@ -70,7 +70,7 @@ namespace skepu{
           }
 
           offset += i - curr.end_i;
-          std::get<tup_arg_ctr>(tup) = comm_ptr[offset];
+          std::get<tup_arg_ctr>(tup) = swap_ptr[offset];
         }
 
         else{

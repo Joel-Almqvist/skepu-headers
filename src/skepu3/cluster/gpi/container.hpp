@@ -34,7 +34,6 @@ namespace skepu{
 
       gaspi_pointer_t cont_seg_ptr;
       gaspi_pointer_t comm_seg_ptr;
-      long comm_offset;
 
       unsigned long op_nr;
 
