@@ -226,18 +226,50 @@ namespace skepu{
         last_part_vclock_offset :
         norm_part_vclock_offset;
 
-      gaspi_read(
+
+
+      auto res = gaspi_read_notify(
         segment_id, // local seg
         vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
         dest_rank,
         dest_seg_id,
         remote_offset,
         sizeof(unsigned long) * nr_nodes,
+        MAX_THREADS, // notif id
         queue,
         GASPI_BLOCK
       );
 
-      gaspi_wait(queue, GASPI_BLOCK);
+      if(res == GASPI_QUEUE_FULL){
+        gaspi_wait(queue, GASPI_BLOCK);
+
+        gaspi_read_notify(
+          segment_id, // local seg
+          vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
+          dest_rank,
+          dest_seg_id,
+          remote_offset,
+          sizeof(unsigned long) * nr_nodes,
+          MAX_THREADS, // notif id
+          queue,
+          GASPI_BLOCK
+        );
+      }
+
+
+      gaspi_notification_id_t notify_id;
+      gaspi_notification_t notify_val;
+
+      gaspi_notify_waitsome(
+        segment_id,
+        MAX_THREADS, //notif id
+        1,
+        &notify_id,
+        GASPI_BLOCK
+        );
+
+      gaspi_notify_reset(segment_id, notify_id, &notify_val);
+
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
@@ -291,7 +323,8 @@ namespace skepu{
           }
           else{
             // Sleep
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
           }
         }
       }
@@ -528,7 +561,6 @@ namespace skepu{
     }
     else{
       // Case - Fill the cache
-
       size_t dest_rank = get_owner(i);
 
       // The container's limits
@@ -563,6 +595,7 @@ namespace skepu{
         start_lim++;
       }
 
+
       bool remote_ready = vclock_is_ready(op_nr, dest_rank);
       if(!remote_ready){
         vclock_w_lock.lock();
@@ -573,13 +606,14 @@ namespace skepu{
 
         vclock_w_lock.unlock();
       }
-      return comm_buffer[i - start];
+
 
       start = start_lim;
       end = end_lim;
 
       gaspi_notification_id_t notify_id;
       gaspi_notification_t notify_val;
+
 
       auto res = gaspi_read_notify(
         segment_id,
@@ -593,7 +627,10 @@ namespace skepu{
         GASPI_BLOCK
       );
 
+
+
       if(res == GASPI_QUEUE_FULL){
+
         gaspi_wait(queue, GASPI_BLOCK);
 
         res = gaspi_read_notify(
@@ -609,6 +646,7 @@ namespace skepu{
         );
         assert(res == GASPI_SUCCESS);
       }
+
 
       gaspi_notify_waitsome(
         segment_id,
