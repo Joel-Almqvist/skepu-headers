@@ -8,6 +8,8 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
+#include <cstring>
+#include <atomic>
 
 #include <GASPI.h>
 
@@ -56,11 +58,16 @@ namespace skepu{
     *  (which pre fetches remote values during Map) versus the proxy class.
     *  The proxy class uses the memory as a cache for remote values.
     */
-    static const int COMM_BUFFER_TOT_ELEMS = 100;
+    static const int COMM_BUFFER_TOT_ELEMS = 140;
     static const int COMM_BUFFER_SWAP_ELEMS = 20;
     static const int COMM_BUFFER_ELEMS = COMM_BUFFER_TOT_ELEMS  - COMM_BUFFER_SWAP_ELEMS;
 
+    // This is used to differentiate notifies, any notify >= MAX_THREADS
+    // is safe to use.
     static const int MAX_THREADS = 32;
+
+    static const int CACHE_LINE_SIZE = 40;
+    static const int CACHE_LINES_AMOUNT = COMM_BUFFER_ELEMS / CACHE_LINE_SIZE;
 
     // Used to store two versions of the data so that Map may use a random access
     // type within its function.
@@ -87,6 +94,12 @@ namespace skepu{
 
     // This object's offset
     long vclock_offset;
+
+
+    std::mutex cache_locks[CACHE_LINES_AMOUNT];
+    //int t_offset[MAX_THREADS] = {};
+    std::atomic_uint t_offset;
+
 
     // Indiciates which indeces this partition handles
     long start_i;
@@ -512,24 +525,25 @@ namespace skepu{
 
 
   template<typename Arg>
-  static void init_proxy_helper(double, int tnum, Matrix<Arg>& m){
-      m.proxy_cache[2 * tnum] = size_t{0};
-      m.proxy_cache[2 * tnum + 1] = size_t{0};
+  static void init_proxy_helper(double, Matrix<Arg>& m){
+      memset(m.proxy_cache, 0,
+        sizeof(size_t) * 2 * Matrix<Arg>::CACHE_LINES_AMOUNT);
+
     }
 
   template<typename Arg>
-  static void init_proxy_helper(int, int tnum, Arg&){}
+  static void init_proxy_helper(int, Arg&){}
 
 
   template<typename First, typename ... Rest>
-  static void init_proxy_cache(int tnum, First& first, Rest&... rest){
-    init_proxy_helper(double{}, tnum, first);
-    init_proxy_cache(tnum, rest...);
+  static void init_proxy_cache(First& first, Rest&... rest){
+    init_proxy_helper(double{}, first);
+    init_proxy_cache(rest...);
   }
 
   template<typename First>
-  static void init_proxy_cache(int tnum, First& first){
-    init_proxy_helper(double{}, tnum, first);
+  static void init_proxy_cache(First& first){
+    init_proxy_helper(double{}, first);
   }
 
   // Sink
@@ -542,32 +556,152 @@ namespace skepu{
   * contiguous values and first and last values are stored in
   * proxy_cache[thread_number].
   */
-  T& proxy_get(const size_t i, int tnum, int thread_amount){
+  T proxy_get(const size_t i, int tnum){
 
     // Which values are cached
-    size_t& start = proxy_cache[2 * tnum];
-    size_t& end = proxy_cache[1 + 2 * tnum];
+    // size_t& start = proxy_cache[2 * tnum];
+    // size_t& end = proxy_cache[1 + 2 * tnum];
+    // size_t size = Matrix<T>::COMM_BUFFER_ELEMS / thread_amount;
 
-    size_t size = Matrix<T>::COMM_BUFFER_ELEMS / thread_amount;
-    T* comm_buffer = ((T*) comm_seg_ptr ) + size * tnum;
+    T* comm_buffer = ((T*) comm_seg_ptr );
 
     if(i >= start_i && i <= end_i){
       return ((T*) cont_seg_ptr)[i - start_i];
     }
-    // Is the cache initialized and are we within it
-    else if(!(start == 0 && end == 0) && i >= start && i <= end){
-      // cached value
-      return comm_buffer[i - start];
+
+
+    bool is_cached = false;
+    int cache_index;
+
+    bool evaluated_cache_lines[CACHE_LINES_AMOUNT] = {};
+
+    // First evaluate all values without any waiting
+    for(int j = 0; j < CACHE_LINES_AMOUNT; j++){
+
+      if(!cache_locks[j].try_lock()){
+        continue;
+      }
+
+      evaluated_cache_lines[j] = true;
+
+      // Quick search for optimistic early termination
+      if(proxy_cache[j * 2] <= i && proxy_cache[1 + j * 2] >= i
+        && proxy_cache[1 + j * 2] != 0){
+        is_cached = true;
+        cache_index = j;
+
+        // Keep the lock active
+        break;
+      }
+
+      cache_locks[j].unlock();
+    }
+
+    // Search through all cached values
+    if(!is_cached){
+      // Start the search at the oldest cache value
+      int start_point = (t_offset + 1) % CACHE_LINES_AMOUNT;
+
+
+      // Search [start_point, end]
+      for(int j = start_point; j < CACHE_LINES_AMOUNT; j++){
+
+        if(evaluated_cache_lines[j]){
+          continue;
+        }
+
+        cache_locks[j].lock();
+
+        // Check if the value is within a cacheline
+        if(proxy_cache[j * 2] <= i && proxy_cache[1 + j * 2] >= i
+          && proxy_cache[1 + j * 2] != 0){
+          is_cached = true;
+          cache_index = j;
+
+          // Keep the lock active
+          break;
+        }
+
+        cache_locks[j].unlock();
+      }
+
+      // Continue search only if needed
+      if(!is_cached){
+        // Search [0, search_point)
+        for(int j = 0; j < start_point; j++){
+
+          if(evaluated_cache_lines[j]){
+            continue;
+          }
+
+          cache_locks[j].lock();
+
+          // Check if the value is within a cacheline
+          if(proxy_cache[j * 2] <= i && proxy_cache[1 + j * 2] >= i
+            && proxy_cache[1 + j * 2] != 0){
+              is_cached = true;
+              cache_index = j;
+
+              // Keep the lock active
+              break;
+            }
+
+            cache_locks[j].unlock();
+          }
+      }
+    }
+
+
+    if(is_cached){
+      T temp = comm_buffer[cache_index * CACHE_LINE_SIZE
+      + i - proxy_cache[cache_index * 2]];
+
+      cache_locks[cache_index].unlock();
+      return temp;
+
     }
     else{
-      // Case - Fill the cache
+      return proxy_fill_cache(i, tnum);
+    }
+  }
+
+  int get_empty_proxy_slot(int tnum){
+
+    int start_point = (++t_offset) % CACHE_LINES_AMOUNT;
+
+    for(int i = start_point; i < CACHE_LINES_AMOUNT; i++){
+      if(cache_locks[i].try_lock()){
+        return i;
+      }
+    }
+
+    for(int i = 0; i < start_point; i++){
+      if(cache_locks[i].try_lock()){
+        return i;
+      }
+    }
+
+    cache_locks[start_point].lock();
+
+    return start_point;
+
+  }
+
+
+    // Ejects a cacheline and replaces it with a new remote read
+    T& proxy_fill_cache(const size_t i, int tnum){
+
+      int empty_slot = get_empty_proxy_slot(tnum);
+
+      T* comm_buffer = ((T*) comm_seg_ptr );
+
       size_t dest_rank = get_owner(i);
 
       // The container's limits
       size_t end_max = get_end(dest_rank);
       size_t start_max = get_start(dest_rank);
 
-      size_t t_step = (size - 1) / 2;
+      size_t t_step = (CACHE_LINE_SIZE - 1) / 2;
 
       size_t underflow_check = i >= t_step ? i - t_step : 0;
 
@@ -577,7 +711,7 @@ namespace skepu{
 
 
       if(end_lim - start_lim < t_step * 2){
-        size_t unused_buffer = size - 1 - end_lim + start_lim;
+        size_t unused_buffer = CACHE_LINE_SIZE - 1 - end_lim + start_lim;
 
         underflow_check = underflow_check >= unused_buffer ?
         underflow_check - unused_buffer :
@@ -595,6 +729,8 @@ namespace skepu{
         start_lim++;
       }
 
+      proxy_cache[2 * empty_slot] = start_lim;
+      proxy_cache[2 * empty_slot + 1] = end_lim;
 
       bool remote_ready = vclock_is_ready(op_nr, dest_rank);
       if(!remote_ready){
@@ -608,16 +744,13 @@ namespace skepu{
       }
 
 
-      start = start_lim;
-      end = end_lim;
-
       gaspi_notification_id_t notify_id;
       gaspi_notification_t notify_val;
 
 
       auto res = gaspi_read_notify(
         segment_id,
-        comm_offset + sizeof(T) * size * tnum, // local offset
+        comm_offset + sizeof(T) * CACHE_LINE_SIZE * empty_slot, // local offset
         dest_rank,
         segment_id + dest_rank - rank, // dest_seg
         sizeof(T) * (start_lim - step * dest_rank), // remote offset
@@ -627,15 +760,13 @@ namespace skepu{
         GASPI_BLOCK
       );
 
-
-
       if(res == GASPI_QUEUE_FULL){
 
         gaspi_wait(queue, GASPI_BLOCK);
 
         res = gaspi_read_notify(
           segment_id,
-          comm_offset + sizeof(T) * size * tnum, // local offset
+          comm_offset + sizeof(T) * CACHE_LINE_SIZE * empty_slot, // local offset
           dest_rank,
           segment_id + dest_rank - rank, // dest_seg
           sizeof(T) * (start_lim - step * dest_rank), // remote offset
@@ -658,11 +789,10 @@ namespace skepu{
 
       gaspi_notify_reset(segment_id, notify_id, &notify_val);
 
-      return comm_buffer[i - start];
+      cache_locks[empty_slot].unlock();
+
+      return comm_buffer[CACHE_LINE_SIZE * empty_slot + i - start_lim];
     }
-  };
-
-
 
   public:
 
@@ -734,13 +864,18 @@ namespace skepu{
       gaspi_segment_ptr(segment_id, &cont_seg_ptr);
       comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
 
-      local_buffer = (T*) malloc(local_size * sizeof(T) + sizeof(size_t) * 2 * MAX_THREADS);
+      local_buffer = (T*) malloc(local_size * sizeof(T) +
+        sizeof(size_t) * 2 * CACHE_LINES_AMOUNT);
+
       proxy_cache = (size_t*) (local_buffer + local_size);
 
       // Point vclock to the memory after communication segment
       vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_TOT_ELEMS);
 
       gaspi_queue_create(&queue, GASPI_BLOCK);
+
+      t_offset = 0;
+
     };
 
 
