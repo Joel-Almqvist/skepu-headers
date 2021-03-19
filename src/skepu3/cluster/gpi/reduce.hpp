@@ -19,6 +19,26 @@ namespace skepu{
 
     Reduce1D(ReduceFunc func) : func{func} {};
 
+
+
+    template<typename Container>
+    typename Container::value_type apply(Container& cont){
+      using T = typename Container::value_type;
+
+      // gaspi_all_reduce(
+      //   cont.cont_seg_ptr, // send
+      //   cont.comm_seg_ptr, // receive
+      //   cont.local_size, // amount of elements to send
+      //   sizeof(T), // size of elems
+      //   func, // op
+      //   reduce_statevec,
+      //   GASPI_GROUP_ALL,
+      //   GASPI_BLOCK
+      // );
+
+    }
+
+
      template<typename Container>
      typename Container::value_type operator()(Container& cont){
        using T = typename Container::value_type;
@@ -43,6 +63,14 @@ namespace skepu{
          int step;
          int remote_comm_offset;
          gaspi_notification_t notify_val = 0;
+
+
+         // TODO add the following:
+         // 1 - A proper wait which only does so before writing
+         // 2 - Multithreaded
+         // 3 - Better check for queue overflowing
+         gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+         gaspi_wait(cont.queue, GASPI_BLOCK);
 
          for(int i = 0; i < iterations; i++){
 
@@ -97,7 +125,6 @@ namespace skepu{
              }
            }
          }
-
 
 
          // Distribute the reduces value
