@@ -965,7 +965,7 @@ namespace skepu{
         wait_ranks.push_back(dest_rank);
         wait_for_vclocks(op_nr);
 
-        gaspi_read(
+        auto res = gaspi_read(
           segment_id,
           comm_offset,
           dest_rank,
@@ -976,7 +976,11 @@ namespace skepu{
           GASPI_BLOCK
         );
 
-        gaspi_notify(
+        if(res == GASPI_QUEUE_FULL){
+          printf("QUEUE FULL READ\n");
+        }
+
+        res = gaspi_notify(
           segment_id + dest_rank - rank, // remote segment
           dest_rank,
           notif_ctr * nr_nodes + rank, // notif id
@@ -984,6 +988,11 @@ namespace skepu{
           queue,
           GASPI_BLOCK
         );
+
+
+        if(res == GASPI_QUEUE_FULL){
+          printf("QUEUE FULL NOTIF\n");
+        }
 
         ++notif_ctr;
         gaspi_wait(queue, GASPI_BLOCK);
