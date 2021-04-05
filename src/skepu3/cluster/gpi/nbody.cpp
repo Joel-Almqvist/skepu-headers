@@ -160,19 +160,20 @@ int main(int argc, char *argv[])
   std::cout << "Exec time = " << elapsed_seconds.count() << " c = " << c
   << ", r = " << r <<", iterations = " << iterations << std::endl;
 
-  /*
+
+
   auto par_to_str = [](Particle p) -> std::string{
     return "m = "+ std::to_string(p.m).substr(0,5) +
-      ", x = " + std::to_string(p.x).substr(0,5) +
+      ", x = " + std::to_string(p.x).substr(0,9) +
       ", y = " + std::to_string(p.y).substr(0,5) +
       ", z = " + std::to_string(p.z).substr(0,5) +
-      ", vx = " + std::to_string(p.vx).substr(0,5) +
+      ", vx = " + std::to_string(p.vx).substr(0,9) +
       ", vy = " + std::to_string(p.vy).substr(0,5) +
       ", vz = " + std::to_string(p.vz).substr(0,5);
   };
 
   particles.print(par_to_str);
-  */
+
 
 	return 0;
 }

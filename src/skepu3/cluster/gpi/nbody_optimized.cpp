@@ -4,7 +4,7 @@
 #include <cmath>
 #include <sstream>
 #include <ctime>
-
+#include <float.h>
 
 #include <skepu>
 
@@ -22,59 +22,9 @@ struct Acc
 };
 
 
-//constexpr float G [[skepu::userconstant]] = 1;
-//constexpr float delta_t [[skepu::userconstant]] = 0.1;
 
 constexpr float G = 1;
 constexpr float delta_t = 0.1;
-
-
-
-/*
- * Array user-function that is used for applying nbody computation,
- * All elements from parr and a single element (named 'pi') are accessible
- * to produce one output element of the same type.
- */
-Particle move(skepu::Index1D index, Particle pi, skepu::Vec<Particle> parr)
-{
-	size_t i = index.i;
-
-	float ax = 0.0, ay = 0.0, az = 0.0;
-	size_t np = parr.size;
-
-	for (size_t j = 0; j < np; ++j)
-	{
-		if (i != j)
-		{
-			Particle pj = parr[j];
-
-			float rij = sqrt((pi.x - pj.x) * (pi.x - pj.x)
-			               + (pi.y - pj.y) * (pi.y - pj.y)
-			               + (pi.z - pj.z) * (pi.z - pj.z));
-
-			float dum = G * pi.m * pj.m / pow(rij, 3);
-
-			ax += dum * (pi.x - pj.x);
-			ay += dum * (pi.y - pj.y);
-			az += dum * (pi.z - pj.z);
-		}
-	}
-
-//	std::cout << "i = " << i << ": ax = " << ax << ", ay = " << ay << ", az = " << az << "\n";
-
-	Particle newp;
-	newp.m = pi.m;
-
-	newp.x = pi.x + delta_t * pi.vx + delta_t * delta_t / 2 * ax;
-	newp.y = pi.y + delta_t * pi.vy + delta_t * delta_t / 2 * ay;
-	newp.z = pi.z + delta_t * pi.vz + delta_t * delta_t / 2 * az;
-
-	newp.vx = pi.vx + delta_t * ax;
-	newp.vy = pi.vy + delta_t * ay;
-	newp.vz = pi.vz + delta_t * az;
-
-	return newp;
-}
 
 
 // Generate user-function that is used for initializing particles array.
@@ -118,14 +68,12 @@ int main(int argc, char *argv[])
     iterations = std::stoul(argv[3]);
   }
   else{
-    c = 8;
-		r = 8;
-    iterations = 10;
+    c = 7;
+		r = 7;
+    iterations = 4;
   }
 
 	size_t np = c * r;
-
-	//auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[3])};
 
   auto start = std::chrono::system_clock::now();
 
@@ -134,25 +82,36 @@ int main(int argc, char *argv[])
 	skepu::Matrix<Acc> particles_delta(c, r);
 
 
-
 	auto init_map = skepu::Map<2>(init);
 	init_map(particles, np);
 
-
+	// Capture these in the lambdas
 	Particle p;
-	auto acc = skepu::Map<1>([&p](Particle pi){
+	size_t p_index;
 
+	auto acc = skepu::Map<2>([&p, &p_index](skepu::Index1D index, Particle pi)
+	{
 		Acc a;
+
+		// A particle does not accelerate itself
+		if(index.i == p_index){
+			a.ax = 0;
+			a.ay = 0;
+			a.az = 0;
+
+			return a;
+		}
 
 		float rij = sqrt((pi.x - p.x) * (pi.x - p.x)
 									 + (pi.y - p.y) * (pi.y - p.y)
 									 + (pi.z - p.z) * (pi.z - p.z));
 
+
 		float dum = G * pi.m * p.m / pow(rij, 3);
 
 		a.ax = dum * (pi.x - p.x);
-		a.ay += dum * (pi.y - p.y);
-		a.az += dum * (pi.z - p.z);
+		a.ay = dum * (pi.y - p.y);
+		a.az = dum * (pi.z - p.z);
 
 		return a;
 	});
@@ -161,6 +120,8 @@ int main(int argc, char *argv[])
 	auto red = skepu::Reduce([](Acc a, Acc b){
 		Acc res;
 		res.ax = a.ax + b.ax;
+		res.ay = a.ay + b.ay;
+		res.az = a.az + b.az;
 		return res;
 	});
 
@@ -170,17 +131,35 @@ int main(int argc, char *argv[])
 	for(int j = 0; j < iterations; j++){
 		for(int i = 0; i < particles.size(); i++){
 			p = particles[i];
+			p_index = i;
+
 			acc(particles_delta, particles);
 
 			curr_acc = red(particles_delta);
 
-			// Here we do more work than actually needed
+
 			p.x = p.x + delta_t * p.vx + delta_t * delta_t * curr_acc.ax / 2;
 			p.y = p.y + delta_t * p.vy + delta_t * delta_t * curr_acc.ay / 2;
 			p.z = p.z + delta_t * p.vz + delta_t * delta_t * curr_acc.az / 2;
 
+			p.vx = p.vx + delta_t * curr_acc.ax;
+			p.vy = p.vy + delta_t * curr_acc.ay;
+			p.vz = p.vz + delta_t * curr_acc.az;
+
+
 			particles.set(i, p);
 		}
+
+		/*
+		if(j == iterations - 1){
+			particles.print([](Particle pp){
+				return "x = "+std::to_string(pp.x)+
+				" y = " + std::to_string(pp.y)+
+				" z = "+std::to_string(pp.z)+
+				" vx = "+std::to_string(pp.vx);
+			});
+		}
+		*/
 	}
 
 
