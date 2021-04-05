@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
   << ", r = " << r <<", iterations = " << iterations << std::endl;
 
 
-
+  /*
   auto par_to_str = [](Particle p) -> std::string{
     return "m = "+ std::to_string(p.m).substr(0,5) +
       ", x = " + std::to_string(p.x).substr(0,9) +
@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
   };
 
   particles.print(par_to_str);
-
+  */
 
 	return 0;
 }

@@ -66,7 +66,7 @@ namespace skepu{
     // is safe to use.
     static const int MAX_THREADS = 32;
 
-    static const int CACHE_LINE_SIZE = 40;
+    static const int CACHE_LINE_SIZE = 20;
     static const int CACHE_LINES_AMOUNT = COMM_BUFFER_ELEMS / CACHE_LINE_SIZE;
 
     // Used to store two versions of the data so that Map may use a random access
