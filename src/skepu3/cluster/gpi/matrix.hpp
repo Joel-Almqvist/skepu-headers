@@ -924,17 +924,15 @@ namespace skepu{
     }
 
 
-
     // Gets a specific value from the Matrix. Either fetch the remote value
     // or wait untill all remotes have read our local value, then return.
     //
     // TODO A distributed distribution scheme of this value should be implemented.
-    // currently we are likely to overload a single node
+    // currently we might overload a single node
     T operator[](const size_t index){
 
       if(index >= start_i && index <= end_i){
         // The value is local, wait until we have distributed the value
-
         gaspi_notification_id_t notify_id;
         gaspi_notification_t notify_val;
 
@@ -954,6 +952,7 @@ namespace skepu{
         }
 
         ++notif_ctr;
+        vclock[rank] = ++op_nr;
         return ((T*) cont_seg_ptr)[index - start_i];
       }
       else{
@@ -961,9 +960,9 @@ namespace skepu{
         int dest_rank = get_owner(index);
 
         // Wait until the rank is on the current OP
-        wait_ranks.clear();
-        wait_ranks.push_back(dest_rank);
-        wait_for_vclocks(op_nr);
+         wait_ranks.clear();
+         wait_ranks.push_back(dest_rank);
+         wait_for_vclocks(op_nr);
 
         auto res = gaspi_read(
           segment_id,
@@ -977,10 +976,25 @@ namespace skepu{
         );
 
         if(res == GASPI_QUEUE_FULL){
-          printf("QUEUE FULL READ\n");
+          gaspi_wait(queue, GASPI_BLOCK);
+
+          gaspi_read(
+            segment_id,
+            comm_offset,
+            dest_rank,
+            segment_id + dest_rank - rank, // remote segment id
+            sizeof(T) * (index - step * dest_rank), // Remote offset
+            sizeof(T),
+            queue,
+            GASPI_BLOCK
+          );
         }
 
-        res = gaspi_notify(
+        // Wait for read to finish
+        gaspi_wait(queue, GASPI_BLOCK);
+
+        // Notify the remote that we have read the value
+        gaspi_notify(
           segment_id + dest_rank - rank, // remote segment
           dest_rank,
           notif_ctr * nr_nodes + rank, // notif id
@@ -989,17 +1003,10 @@ namespace skepu{
           GASPI_BLOCK
         );
 
-
-        if(res == GASPI_QUEUE_FULL){
-          printf("QUEUE FULL NOTIF\n");
-        }
-
         ++notif_ctr;
-        gaspi_wait(queue, GASPI_BLOCK);
-
+        vclock[rank] = ++op_nr;
         return ((T*) comm_seg_ptr)[0];
       }
-      vclock[rank] = ++op_nr;
     }
 
 
