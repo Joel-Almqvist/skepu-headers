@@ -54,7 +54,6 @@ namespace skepu{
         T* val_ptr = (T*) curr.cont_seg_ptr;
         T* swap_ptr = ((T*) curr.comm_seg_ptr) + curr.rank * curr.norm_partition_size;
 
-
         if(curr.start_i > i){
           std::get<tup_arg_ctr>(tup) = swap_ptr[i - dest.start_i];
         }

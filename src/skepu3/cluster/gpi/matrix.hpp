@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstring>
 #include <atomic>
+#include <climits>
 
 #include <GASPI.h>
 
@@ -78,8 +79,8 @@ namespace skepu{
 
     // TODO Remove all swap space references
     size_t swap_space_offset;
-    size_t comm_offset;
-    size_t comm_size;
+    unsigned long comm_offset;
+    unsigned long comm_size;
 
     // Global information about the container
     int last_partition_size;
@@ -100,7 +101,7 @@ namespace skepu{
     std::atomic_uint t_offset;
 
     // The OP number of the remote when its container was fetched
-    size_t* comm_buffer_state;
+    std::atomic_ulong* comm_buffer_state;
 
     // Indiciates which indeces this partition handles
     long start_i;
@@ -111,7 +112,7 @@ namespace skepu{
 
     size_t* proxy_cache;
 
-    int get_owner(size_t index){
+    int get_owner(unsigned long index){
       if(index >= global_size){
         return -1;
       }
@@ -126,7 +127,7 @@ namespace skepu{
     void read_range(
       int start,
       int end,
-      int local_offset,
+      unsigned long local_offset,
       Matrix& dest_cont,
       bool no_wait = false
       ){
@@ -296,7 +297,7 @@ namespace skepu{
     };
 
 
-    bool vclock_is_ready(size_t wait_op_nr, int wait_rank){
+    bool vclock_is_ready(unsigned long wait_op_nr, int wait_rank){
       bool b;
       vclock_r_lock.lock();
       vclock[wait_rank] >= wait_op_nr;
@@ -355,8 +356,7 @@ namespace skepu{
     void build_buffer_helper(bool no_wait, Cont& cont){
       int transfered_obj = 0;
 
-      unsigned swap_offset = cont.comm_offset +
-        sizeof(T) * cont.rank * cont.norm_partition_size;
+      unsigned swap_offset = sizeof(T) * cont.rank * cont.norm_partition_size;
 
       cont.comm_buffer_state[cont.rank] = cont.op_nr;
 
@@ -388,6 +388,7 @@ namespace skepu{
 
         cont.read_range(cont.end_i + 1, end_i, swap_offset +
             transfered_obj * sizeof(T), cont, no_wait);
+
       }
     }
 
@@ -575,9 +576,54 @@ namespace skepu{
     bool is_cached = false;
     int cache_index;
 
-    bool evaluated_cache_lines[CACHE_LINES_AMOUNT] = {};
+    //bool evaluated_cache_lines[CACHE_LINES_AMOUNT] = {};
 
+    int remote_rank = get_owner(i);
+
+    if(comm_buffer_state[i] == op_nr){
+      return comm_buffer[remote_rank * norm_partition_size
+        + i % norm_partition_size];
+    }
+    else if(comm_buffer_state[i] == ULONG_MAX){
+      gaspi_wait(queue, GASPI_BLOCK);
+
+      //std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+      return comm_buffer[remote_rank * norm_partition_size
+        + i % norm_partition_size];
+    }
+    else{
+      comm_buffer_state[i] = ULONG_MAX;
+
+      unsigned long read_size = remote_rank != rank - 1 ?
+        norm_partition_size * sizeof(T) :
+        last_partition_size * sizeof(T);
+
+      auto res = gaspi_read(
+        segment_id,
+        comm_offset + sizeof(T) * remote_rank * norm_partition_size, // local offset
+        remote_rank,
+        segment_id + remote_rank - rank, // dest_seg
+        0, // remote offset
+        read_size,
+        queue,
+        GASPI_BLOCK
+      );
+
+      // TODO  test that this holds
+      assert(res == GASPI_SUCCESS);
+
+      gaspi_wait(queue, GASPI_BLOCK);
+
+      comm_buffer_state[i] = op_nr;
+      return comm_buffer[remote_rank * norm_partition_size
+        + i % norm_partition_size];
+
+    }
+    //return T{};
+    // *****************************
     // First evaluate all values without any waiting
+    /*
     for(int j = 0; j < CACHE_LINES_AMOUNT; j++){
 
       if(!cache_locks[j].try_lock()){
@@ -665,6 +711,7 @@ namespace skepu{
     else{
       return proxy_fill_cache(i, tnum);
     }
+    */
   }
 
   int get_empty_proxy_slot(int tnum){
@@ -864,6 +911,7 @@ namespace skepu{
       gaspi_segment_ptr(segment_id, &cont_seg_ptr);
       comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
 
+      // TODO reevaluate, especially size_t
       local_buffer = (T*) malloc(local_size * sizeof(T) +
         sizeof(size_t) * 2 * CACHE_LINES_AMOUNT);
 
@@ -877,7 +925,7 @@ namespace skepu{
       t_offset = 0;
 
 
-      comm_buffer_state = (size_t*) malloc(sizeof(size_t) * nr_nodes);
+      comm_buffer_state = (std::atomic_ulong*) malloc(sizeof(std::atomic_ulong) * nr_nodes);
 
     };
 
