@@ -76,7 +76,7 @@ namespace skepu{
     int local_size;
     long global_size;
 
-
+    // TODO Remove all swap space references
     size_t swap_space_offset;
     size_t comm_offset;
     size_t comm_size;
@@ -97,9 +97,10 @@ namespace skepu{
 
 
     std::mutex cache_locks[CACHE_LINES_AMOUNT];
-    //int t_offset[MAX_THREADS] = {};
     std::atomic_uint t_offset;
 
+    // The OP number of the remote when its container was fetched
+    size_t* comm_buffer_state;
 
     // Indiciates which indeces this partition handles
     long start_i;
@@ -354,9 +355,10 @@ namespace skepu{
     void build_buffer_helper(bool no_wait, Cont& cont){
       int transfered_obj = 0;
 
-      // Note that the field swap_space_offset is the offset in relation to
-      // the start of the whole gaspi_segment
-      size_t swap_offset = COMM_BUFFER_ELEMS * sizeof(T);
+      unsigned swap_offset = cont.comm_offset +
+        sizeof(T) * cont.rank * cont.norm_partition_size;
+
+      cont.comm_buffer_state[cont.rank] = cont.op_nr;
 
       if(cont.start_i > start_i){
         // transfer up to our start_i
@@ -833,27 +835,25 @@ namespace skepu{
 
 
       comm_offset = sizeof(T) * local_size;
-      swap_space_offset = comm_offset + sizeof(T) * COMM_BUFFER_ELEMS;
-      comm_size = sizeof(T) * COMM_BUFFER_TOT_ELEMS;
+      comm_size = sizeof(T) * global_size;
 
       last_partition_comm_offset = sizeof(T) * last_partition_size;
       norm_partition_comm_offset = sizeof(T) * norm_partition_size;
 
-
-      // Guarantee that the comm buffer has size enough for Reduce to work
-      assert(COMM_BUFFER_ELEMS >= ((int) std::ceil(std::log2(nr_nodes))) + 1);
-
-
       norm_vclock_offset = sizeof(T) * norm_partition_size + comm_size;
       last_partition_vclock_offset = sizeof(T) * last_partition_size + comm_size;
 
-
       vclock_offset = comm_offset + comm_size;
 
-      // 2 * nr_nodes * sizeof(unsigned long) is the size of the vector clock
+
+      // Allocate enough memory to:
+      // 1 - Store the local part of the container
+      // 2 - Store remote values which we might read
+      // 2.5 - Store remote values which we prefetch
+      // 3 - The vector clock
       assert(gaspi_segment_create(
         segment_id,
-        gaspi_size_t{sizeof(T) * (local_size + COMM_BUFFER_TOT_ELEMS)
+        gaspi_size_t{sizeof(T) * (local_size + global_size)
           + 2 * nr_nodes * sizeof(unsigned long)},
         GASPI_GROUP_ALL,
         GASPI_BLOCK,
@@ -869,12 +869,15 @@ namespace skepu{
 
       proxy_cache = (size_t*) (local_buffer + local_size);
 
-      // Point vclock to the memory after communication segment
-      vclock = (unsigned long*) (((T*) comm_seg_ptr) + COMM_BUFFER_TOT_ELEMS);
+      // Point vclock to the memory after the swap space
+      vclock = (unsigned long*) (((T*) comm_seg_ptr) + global_size);
 
       gaspi_queue_create(&queue, GASPI_BLOCK);
 
       t_offset = 0;
+
+
+      comm_buffer_state = (size_t*) malloc(sizeof(size_t) * nr_nodes);
 
     };
 

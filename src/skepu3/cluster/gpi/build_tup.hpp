@@ -52,7 +52,7 @@ namespace skepu{
         using T = typename Matrix<Curr>::value_type;
 
         T* val_ptr = (T*) curr.cont_seg_ptr;
-        T* swap_ptr = ((T*) curr.comm_seg_ptr) + Matrix<Curr>::COMM_BUFFER_ELEMS;
+        T* swap_ptr = ((T*) curr.comm_seg_ptr) + curr.rank * curr.norm_partition_size;
 
 
         if(curr.start_i > i){
