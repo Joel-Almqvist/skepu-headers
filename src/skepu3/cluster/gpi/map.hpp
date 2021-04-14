@@ -774,8 +774,6 @@ namespace skepu{
         unsigned long this_op_nr = DestCont::max_op(dest, args...) + 1;
 
         DestCont::set_op_nr(this_op_nr, dest, args...);
-        // Reset all proxy caches since they may be invalid
-        DestCont::init_proxy_cache(args...);
 
         // Pre fetch all remote values we know that we want
         _gpi::build_buff_helper<0, arg_tup_t, typename _gpi::is_skepu_proxy_type<arg_0_t>::type>

@@ -48,7 +48,7 @@ namespace skepu{
     }
 
     T operator[](const size_t i){
-      return owner->proxy_get(i, omp_get_thread_num());
+      return owner->proxy_get(i);
     }
   };
 
