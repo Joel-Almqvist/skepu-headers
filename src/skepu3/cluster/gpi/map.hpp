@@ -31,13 +31,16 @@ namespace skepu{
 
     static const int nr_args = sizeof...(Func_args);
 
+    const bool uses_random_access;
+
     //using arg_tup_t = typename _gpi::get_tup_t<Function, nr_args - 1>::type;
 
     using arg_tup_t = typename std::tuple<Func_args...>;
 
 
   public:
-    Map1D(std::function<Ret(Func_args...)> func) : func{func} {};
+    Map1D(std::function<Ret(Func_args...)> func) : func{func},
+    uses_random_access{has_random_access<Func_args...>()} {};
 
 
   private:
@@ -249,7 +252,7 @@ namespace skepu{
       template<typename DestCont, typename ... Args>
       void apply(DestCont& dest, Args&&... args)
       {
-        if(has_random_access<Func_args...>()){
+        if(uses_random_access){
           std::cout << "Applying assuming atleast one random access iterator\n";
         }
         else{
