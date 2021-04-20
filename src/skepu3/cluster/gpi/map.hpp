@@ -112,7 +112,33 @@ namespace skepu{
         gaspi_wait(curr.queue, GASPI_BLOCK);
         std::get<ctr>(tup) = comm_ptr[offset];
       }
+    }
 
+
+
+    template<typename Curr, typename... Rest>
+    static bool has_random_access(){
+      return has_random_access(int{}, std::tuple<Curr, Rest...>{});
+    }
+
+
+    template<typename Curr, typename... Rest>
+    static auto has_random_access(int sfinae, std::tuple<Curr, Rest...>)
+      -> decltype((typename Curr::is_proxy_type){}, true)
+    {
+      return true;
+    }
+
+
+    template<typename Curr, typename... Rest>
+    static bool has_random_access(long sfinae, std::tuple<Curr, Rest...>) {
+
+      return has_random_access(int{}, std::tuple<Rest...>{});
+    }
+
+
+    static bool has_random_access(int sfinae, std::tuple<>) {
+      return false;
     }
 
 
@@ -219,6 +245,20 @@ namespace skepu{
       }
 
 
+      // Work in progress
+      template<typename DestCont, typename ... Args>
+      void apply(DestCont& dest, Args&&... args)
+      {
+        if(has_random_access<Func_args...>()){
+          std::cout << "Applying assuming atleast one random access iterator\n";
+        }
+        else{
+          std::cout << "Applying without random access iterators\n";
+        }
+      }
+
+
+
       template<typename DestCont, typename ... Args>
       void operator()(DestCont& dest, Args&&... args)
       {
@@ -300,7 +340,7 @@ namespace skepu{
 
   // The constructor wrapper for function pointers
   template <int Arity = -1, typename Ret, typename... Args>
-  Map1D<Arity, Ret, Args...> map(Ret(*map_arg)(Args...)){
+  Map1D<Arity, Ret, Args...> Map(Ret(*map_arg)(Args...)){
       return Map1D<Arity, Ret, Args...>((std::function<Ret(Args...)>)map_arg);
   }
 
@@ -314,7 +354,7 @@ namespace skepu{
 
   // The constructor wrapper for lambda and functors
   template <int Arity = -1, typename Lambda>
-  auto map(Lambda& lambda) -> decltype(_map_helper<Arity>(lambda_cast(lambda))){
+  auto Map(Lambda&& lambda) -> decltype(_map_helper<Arity>(lambda_cast(lambda))){
 
     return _map_helper<Arity>(lambda_cast(lambda));
   }

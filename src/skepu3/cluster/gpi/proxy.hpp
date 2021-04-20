@@ -22,7 +22,7 @@ namespace skepu{
   class Vec{
   private:
 
-    template <typename TT, int>
+    template<int, typename Ret, typename... Func_args>
     friend class Map1D;
 
     friend class Matrix<T>;
