@@ -34,7 +34,7 @@ namespace skepu{
     // and in all other containers. This is an ad hoc solution due to being a demo
     template<typename TT>
     friend class Reduce1D;
-    template<typename TT, int>
+    template<int, typename Ret, typename... Func_args>
     friend class Map1D;
     template<typename TT>
     friend class FilterClass;

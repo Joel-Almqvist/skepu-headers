@@ -18,6 +18,7 @@ namespace skepu{
 
       // This is only a temporary, non scalable solution
       friend class Reduce1D;
+      template<int, typename Ret, typename... Func_args>
       friend class Map1D;
       friend class FilterClass;
       friend class build_tup_util;
