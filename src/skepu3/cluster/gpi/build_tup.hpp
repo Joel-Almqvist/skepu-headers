@@ -184,12 +184,9 @@ namespace skepu{
       static void build(bool no_wait, int SFINAE_param, Dest& dest,
           Matrix<First>& first){}
 
-
       // Sink
       template<typename Dest>
       static void build(bool no_wait, double SFINAE_param, Dest& dest){}
-
-
     };
 
     // The current lambda argument is not a proxy type, but we need to make sure

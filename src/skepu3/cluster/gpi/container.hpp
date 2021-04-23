@@ -2,6 +2,7 @@
 #define CONTAINER_HPP
 #include <vector>
 #include <mutex>
+#include <map>
 
 #include <GASPI.h>
 
@@ -36,7 +37,8 @@ namespace skepu{
       gaspi_pointer_t cont_seg_ptr;
       gaspi_pointer_t comm_seg_ptr;
 
-      unsigned long op_nr;
+      unsigned long& op_nr;
+      unsigned long state;
 
       // Use a short due to gaspi_notification_id_t being of that type
       // and all calculations using this will be converted to that type.
@@ -45,20 +47,22 @@ namespace skepu{
       // Must be initialized by derived classes
       unsigned long* vclock;
 
-      std::mutex vclock_r_lock;
-      std::mutex vclock_w_lock;
+      std::map<int, unsigned long> constraints;
 
-      Container() : wait_ranks{}{
+      Container() : wait_ranks{}, op_nr{Environment::op_nr}{
 
         Environment& env = Environment::get_instance();
         env.init();
 
+        vclock = Environment::vclock;
+
         gaspi_proc_rank(&rank);
         gaspi_proc_num(&nr_nodes);
-        segment_id = created_containers * nr_nodes + rank;
+        gaspi_queue_create(&queue, GASPI_BLOCK);
+        segment_id = created_containers * nr_nodes + rank + 1;
         //segment_id = created_containers;
 
-        op_nr = 0;
+        state = 0;
         notif_ctr = 0;
         curr_containers++;
         created_containers++;

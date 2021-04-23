@@ -11,6 +11,7 @@
 #include <cstring>
 #include <atomic>
 #include <climits>
+#include <omp.h>
 
 #include <GASPI.h>
 
@@ -69,13 +70,14 @@ namespace skepu{
     int norm_partition_size;
     long norm_partition_comm_offset;
 
+    /* TODO Remove!
     // Global information regarding offset
     long last_partition_vclock_offset;
     long norm_vclock_offset;
 
     // This object's offset
     long vclock_offset;
-
+    */
     // The OP number of the remote when its container was fetched
     std::atomic_ulong* comm_buffer_state;
     std::mutex* comm_buffer_locks;
@@ -146,30 +148,20 @@ namespace skepu{
     // Reads the remote vclock and updates our own
     // Take in the vclock offsets since we might read from a container with
     // a different type or size (and hence offset) than ourselves.
-    void get_vclock(
-      int dest_rank,
-      int dest_seg_id,
-      int norm_part_vclock_offset,
-      int last_part_vclock_offset
-      ){
+    void get_vclock(int dest_rank){
 
-        if(dest_rank == rank && dest_seg_id == segment_id){
+        if(dest_rank == rank){
           // Reading our own vclock does nothing
           return;
         }
 
-      unsigned long remote_offset = dest_rank == nr_nodes - 1 ?
-        last_part_vclock_offset :
-        norm_part_vclock_offset;
-
-
 
       auto res = gaspi_read_notify(
-        segment_id, // local seg
-        vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
+        0, // local seg
+        sizeof(unsigned long) * nr_nodes, // local offset
         dest_rank,
-        dest_seg_id,
-        remote_offset,
+        0, // dest seg
+        0, // remote offsett
         sizeof(unsigned long) * nr_nodes,
         100, // notif id
         queue,
@@ -180,11 +172,11 @@ namespace skepu{
         gaspi_wait(queue, GASPI_BLOCK);
 
         gaspi_read_notify(
-          segment_id, // local seg
-          vclock_offset + sizeof(unsigned long) * nr_nodes, // local offset
+          0, // local seg
+          sizeof(unsigned long) * nr_nodes, // local offset
           dest_rank,
-          dest_seg_id,
-          remote_offset,
+          0, // dest seg
+          0, // remote offsett
           sizeof(unsigned long) * nr_nodes,
           100, // notif id
           queue,
@@ -197,19 +189,19 @@ namespace skepu{
       gaspi_notification_t notify_val;
 
       gaspi_notify_waitsome(
-        segment_id,
+        0, // seg id
         100, //notif id
         1,
         &notify_id,
         GASPI_BLOCK
         );
 
-      gaspi_notify_reset(segment_id, notify_id, &notify_val);
+      gaspi_notify_reset(0, notify_id, &notify_val);
 
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
-          vclock[i] = op_nr;
+          vclock[i] = state;
         }
         else{
           vclock[i] = std::max(vclock[i + nr_nodes], vclock[i]);
@@ -218,53 +210,107 @@ namespace skepu{
     };
 
 
-    bool vclock_is_ready(unsigned long wait_op_nr, int wait_rank){
-      bool b;
-      vclock_r_lock.lock();
-      vclock[wait_rank] >= wait_op_nr;
-      vclock_r_lock.unlock();
-      return b;
-    }
-
-
-
     void wait_for_vclocks(unsigned long wait_val){
-      wait_for_vclocks(wait_val, *this);
-      }
-
-
-    template<typename RemoteContT>
-    void wait_for_vclocks(unsigned long wait_val, RemoteContT& remote_cont){
       int curr_rank;
-      int curr_seg_id;
       bool done;
-      const int min_seg_id = segment_id - rank;
 
       for(int i = 0; i < wait_ranks.size(); i++){
         curr_rank = wait_ranks[i];
-        curr_seg_id = min_seg_id + curr_rank;
 
         if(curr_rank == rank || vclock[curr_rank] >= wait_val){
           continue;
         }
 
         while(true){
-          vclock_r_lock.lock();
-          get_vclock(curr_rank, curr_seg_id, remote_cont.norm_vclock_offset,
-            remote_cont.last_partition_vclock_offset);
-            done = vclock[curr_rank] >= wait_val;
-          vclock_r_lock.unlock();
+          get_vclock(curr_rank);
+          done = vclock[curr_rank] >= wait_val;
           if(done){
             break;
           }
           else{
             // Sleep
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
           }
         }
       }
+      wait_ranks.clear();
     };
+
+
+    /*
+    * Gets the harshers constraints in the arg list and stores it in dest.
+    * Clears the constraint of non dest members.
+    */
+    template<typename Curr, typename... Rest>
+    void get_constraints(Curr& curr,
+      Rest&... rest){
+        get_constraints_helper(curr);
+        get_constraints(rest...);
+      }
+
+    // Sink
+    void get_constraints(){
+      }
+
+    template<typename Cont>
+    void get_constraints_helper(Cont& curr){
+
+      for(auto& c : curr.constraints){
+
+        if(c.second > constraints[c.first]){
+          constraints[c.first] = c.second;
+        }
+      }
+      curr.constraints.clear();
+    }
+
+
+    void wait_for_constraints(){
+
+      for(auto& c : constraints){
+
+        wait_ranks.push_back(c.first);
+        wait_for_vclocks(c.second);
+
+      }
+      constraints.clear();
+
+    }
+
+    template<typename Curr, typename... Rest>
+    static void flush_rest(Curr& curr, Rest&... rest){
+      if(curr.state != 0){
+        curr.flush();
+      }
+      flush_rest(rest...);
+    }
+
+    static void flush_rest(){}
+
+
+    void flush(){
+
+      if(state == op_nr){
+        return;
+      }
+
+      #pragma omp parallel
+      {
+        size_t t_step = local_size / omp_get_num_threads();
+
+        size_t size = omp_get_thread_num() == omp_get_num_threads() -1 ?
+          t_step + local_size % omp_get_num_threads() :
+          t_step;
+
+        std::memcpy(
+          (value_type*) cont_seg_ptr + omp_get_thread_num() * t_step,
+          (value_type*) local_buffer + omp_get_thread_num() * t_step,
+           sizeof(T) * size);
+      }
+    }
+
+
 
     /* Fetches all indeces between our own start_i to end_i from the remote
     * container cont. The values are put cont's communication buffer.
@@ -357,6 +403,9 @@ namespace skepu{
 
 
 
+
+    /* TODO Remove these functions!
+
     // Given a list of Matrices and other types returns the highest OP number
     // of the matrices.
     template<typename ... Rest>
@@ -422,6 +471,8 @@ namespace skepu{
       Last& last){
   }
 
+  */
+
   long get_comm_offset(size_t inc_rank){
     if(inc_rank != nr_nodes -1){
       return norm_partition_comm_offset;
@@ -465,26 +516,40 @@ namespace skepu{
       return comm_buffer[i];
     }
 
+
+    comm_buffer_locks[remote_rank].lock();
+
+    // Check if the work has been done while we were waiting on the lock
+    if(comm_buffer_state[remote_rank] == op_nr){
+      comm_buffer_locks[remote_rank].unlock();
+      return comm_buffer[i];
+    }
+
+    // We are the first to get the lock and need to fetch the remote values
     else{
 
-      comm_buffer_locks[remote_rank].lock();
+      // TODO Wait for the remote rank to reach our current OP number
 
-      // Check if the work has been done while we were waiting on the lock
-      if(comm_buffer_state[remote_rank] == op_nr){
-        comm_buffer_locks[remote_rank].unlock();
-        return comm_buffer[i];
-      }
-
-      // We are the first to get the lock and need to fetch the remote values
-      else{
-
-        unsigned long read_size = remote_rank != rank - 1 ?
-          (norm_partition_size + 1) * sizeof(T) :
-          (last_partition_size + 1) * sizeof(T);
+      unsigned long read_size = remote_rank != rank - 1 ?
+        (norm_partition_size + 1) * sizeof(T) :
+        (last_partition_size + 1) * sizeof(T);
 
 
-        // A read notify might be more fitting here
-        auto res = gaspi_read(
+      // A read notify might be more fitting here
+      auto res = gaspi_read(
+        segment_id,
+        comm_offset + sizeof(T) * remote_rank * norm_partition_size, // local offset
+        remote_rank,
+        segment_id + remote_rank - rank, // dest_seg
+        0, // remote offset
+        read_size,
+        queue,
+        GASPI_BLOCK
+      );
+
+      if(res == GASPI_QUEUE_FULL){
+        gaspi_wait(queue, GASPI_BLOCK);
+        gaspi_read(
           segment_id,
           comm_offset + sizeof(T) * remote_rank * norm_partition_size, // local offset
           remote_rank,
@@ -494,28 +559,14 @@ namespace skepu{
           queue,
           GASPI_BLOCK
         );
-
-        if(res == GASPI_QUEUE_FULL){
-          gaspi_wait(queue, GASPI_BLOCK);
-          gaspi_read(
-            segment_id,
-            comm_offset + sizeof(T) * remote_rank * norm_partition_size, // local offset
-            remote_rank,
-            segment_id + remote_rank - rank, // dest_seg
-            0, // remote offset
-            read_size,
-            queue,
-            GASPI_BLOCK
-          );
-        }
-
-        gaspi_wait(queue, GASPI_BLOCK);
-        comm_buffer_state[remote_rank] = op_nr;
-
-        comm_buffer_locks[remote_rank].unlock();
-        return comm_buffer[i];
-
       }
+
+      gaspi_wait(queue, GASPI_BLOCK);
+      comm_buffer_state[remote_rank] = op_nr;
+
+      comm_buffer_locks[remote_rank].unlock();
+      return comm_buffer[i];
+
     }
   }
 
@@ -564,21 +615,14 @@ namespace skepu{
       last_partition_comm_offset = sizeof(T) * last_partition_size;
       norm_partition_comm_offset = sizeof(T) * norm_partition_size;
 
-      norm_vclock_offset = sizeof(T) * norm_partition_size + comm_size;
-      last_partition_vclock_offset = sizeof(T) * last_partition_size + comm_size;
-
-      vclock_offset = comm_offset + comm_size;
-
 
       // Allocate enough memory to:
       // 1 - Store the local part of the container
       // 2 - Store remote values which we might read
       // 2.5 - Store remote values which we prefetch
-      // 3 - The vector clock
       assert(gaspi_segment_create(
         segment_id,
-        gaspi_size_t{sizeof(T) * (local_size + global_size)
-          + 2 * nr_nodes * sizeof(unsigned long)},
+        gaspi_size_t{sizeof(T) * (local_size + global_size)},
         GASPI_GROUP_ALL,
         GASPI_BLOCK,
         GASPI_MEM_INITIALIZED
@@ -589,12 +633,6 @@ namespace skepu{
       comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
 
       local_buffer = (T*) malloc(local_size * sizeof(T));
-
-      // Point vclock to the memory after the swap space
-      vclock = (unsigned long*) (((T*) comm_seg_ptr) + global_size);
-
-      gaspi_queue_create(&queue, GASPI_BLOCK);
-
 
       comm_buffer_state = (std::atomic_ulong*) malloc(sizeof(std::atomic_ulong) * nr_nodes);
       for(int i  = 0; i < nr_nodes; i++){
@@ -620,7 +658,6 @@ namespace skepu{
       for(int i = 0; i < local_size; i ++){
         ((T*) cont_seg_ptr)[i] = scalar;
       }
-      vclock[rank] = ++op_nr;
     }
 
 
@@ -631,7 +668,6 @@ namespace skepu{
           ((T*) cont_seg_ptr)[i] = from + std::rand() % (to - from);
         }
 
-        vclock[rank] = ++op_nr;
       }
       else{
         std::cout << "Rand only supports matrices of int or long\n";
@@ -742,6 +778,11 @@ namespace skepu{
 
     // WARNING Only use this for debugging, it has very poor performance
     void print(){
+      gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+
+      op_nr++;
+      flush();
+
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
           for(int j = 0; j < local_size; j++){
