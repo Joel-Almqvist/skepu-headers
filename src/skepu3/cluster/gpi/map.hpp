@@ -285,148 +285,20 @@ namespace skepu{
         // TODO here we must flush if needed
         dest.wait_for_constraints();
 
+
         dest.op_nr++;
 
-        // Do not flush if this is the first operation
-        if(dest.state != 0){
-          dest.flush();
-        }
+        // TODO not all of args must be a container
+        DestCont::flush_rest(dest, args...);
 
-        DestCont::flush_rest(args...);
 
+        // Remember that these variables are globally shared among containers
         dest.vclock[dest.rank] = dest.op_nr;
 
+
+
+        // TODO Remove
         dest.state = dest.op_nr;
-
-        /*
-        max_op_nr = ...
-
-        set_all_containers_state(max_op_nr);
-        */
-
-        /* Det enda värdet i c1 som är har en betydelse i c2 är op_nr för just
-        * denna operation. Nej eftersom alla noder gör arbete på alla operationer
-
-
-        TODO Ändra op_nr till en global variabel i container klassen.
-        Nu har vi en global ordning av alla operationer, dvs alla vclocks kan
-        jämföras med varandra.
-
-        Ändra vclock till en global array som alla kontainrar delar.
-
-
-        SEN så kan vi göra:
-
-        1 - Hitta de starkaste beronden i alla requests
-
-        2 - Jämför med vclock och vänta ifall det behövs
-
-        3 - Flush
-
-        4 - Sätt vclock[rank] till nuvarande op_nr
-
-        5 - Gör operationen... vänta på remotes vi vill läsa ifrån, spara
-        resultatet i en temp buff.
-
-        6 - Lägg till beroenden, dvs alla remotes som vill eller kanske vill
-        läsa ifrån oss läggs till i dest kontainern ENBART.
-
-        Så i icke RAO fallet är det våra "grannar", i RAO fallet är det alla
-
-        ----
-
-        I praktiken så väntar vi då i början på att alla remotes ska ha läst av
-        oss ifall det behövs.
-
-        Under OP väntar vi på att remote ska göra förändringar som vi vill läsa.
-
-         Och i slutet så lägger vi till vilka remotes som vill läsa av oss.
-
-
-         Skillnaden blir först bugfix för op_nr och sen att vi inte måste vänta
-         till att operationen ska nå JUST denna op_nr utan vi väntar enbart på
-         att beroenderna ska lösas.
-
-        */
-
-
-
-        /*
-        op_nr++;
-        update_state(op_nr);
-
-        flush();
-        state = op_nr;
-        vclock[rank] = state;
-
-        // NOTE We assume random access operator
-
-        for(int i = 0; i < nr_nodes; i++){
-          if(i != rank){
-            state_tracker[i] = op_nr;
-          }
-        }
-        */
-
-        // We assume that no lambda-call is pure-local, we can deduce such
-        // cases by checking if the lambda does not contain any random access
-        // iterator. The old variadic solution already have performance
-        // improvement regarding this and hence the easiest solution is to
-        // update it to allow for indeces and let it handle all calls with no
-        // random access iterator.
-        //
-        // Summarized: Any calls without a random acess interator should be
-        // forwarded to the old solution in the future. Here we assume that
-        // there exists a random access iterator argument.
-
-
-        // TODO write over changes if they exist before incrementing op_nr
-
-        // TODO In non RAO we must wait for nodes which we know read from us
-
-        // Idea 1 - Save which op_nr was the last random access operation and
-        // wait for every node to reach atleast that state.
-
-
-        /* Idea 2:
-
-        * create state_nr which indicates which state the container chunk is in
-        * states are indicated by op_nr
-        * Ie (op_nr, state_nr), (12, 9)
-
-        * wait_for_vclock and similar functions now reads the state_nr
-
-        * Increment op_nr at the end of every operation
-
-        * At the start of every operation where a remote reads our local value:
-        *
-        * 1 - Check the requests, read the op_nr of all requests and wait if
-        * needed to guarantee that they have read our local value. We now know
-        * that no ranks wants what is inside the gaspi_segment.
-        *
-        * 2 - Write over the changes, update state_nr
-
-
-        * At the start of every operation WHICH MODIFIES THE LOCAL BUFFER
-        *
-        * 1 - Check the requests, read the op_nr of all requests and wait if
-        * needed to guarantee that they have read our local value. We now know
-        * that no ranks wants what is inside the gaspi_segment.
-        *
-        * 2 - Write over the changes, update state_nr
-        *
-        * 3 - Add which ever remote ranks might want to read from us (for example
-        *  in map with a random access index that would be all ranks).
-        *
-        * 4 - Perform work and put it in the buffer, update op_nr.
-
-
-         * At every operation calculate which ranks want to read my data
-         *
-        */
-        // [(rank, op_nr), (rank, op_nr) ...]
-
-
 
 
         // Pre fetch all remote values we know that we want
@@ -448,6 +320,9 @@ namespace skepu{
               dest.local_buffer + i - dest.start_i, func, tup);
           }
         }
+
+        dest.last_mod_op = dest.op_nr;
+        dest.vclock[dest.rank] = ++dest.op_nr;
 
         // Due to the random access we have constraints to all nodes
         for(int i = 0; i < dest.nr_nodes; i++){

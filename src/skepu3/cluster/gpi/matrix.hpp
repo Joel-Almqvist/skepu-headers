@@ -70,6 +70,11 @@ namespace skepu{
     int norm_partition_size;
     long norm_partition_comm_offset;
 
+
+    unsigned long last_mod_op;
+    unsigned long* last_flush;
+
+
     /* TODO Remove!
     // Global information regarding offset
     long last_partition_vclock_offset;
@@ -201,7 +206,7 @@ namespace skepu{
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
-          vclock[i] = state;
+          vclock[i] = op_nr;
         }
         else{
           vclock[i] = std::max(vclock[i + nr_nodes], vclock[i]);
@@ -221,6 +226,7 @@ namespace skepu{
           continue;
         }
 
+
         while(true){
           get_vclock(curr_rank);
           done = vclock[curr_rank] >= wait_val;
@@ -228,7 +234,16 @@ namespace skepu{
             break;
           }
           else{
-            // Sleep
+            // TODO Remove
+            // std::cout << "Rank " << rank << " waiting on ranks: ";
+            //
+            // for(int i = 0; i < wait_ranks.size(); i++){
+            //   std::cout << wait_ranks[i] << ", ";
+            // }
+            // std::cout << "  and value " << wait_val << std::endl;
+
+
+            // Sleep TODO change val
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
           }
@@ -245,7 +260,7 @@ namespace skepu{
     template<typename Curr, typename... Rest>
     void get_constraints(Curr& curr,
       Rest&... rest){
-        get_constraints_helper(curr);
+        get_constraints_helper(curr, curr == *this);
         get_constraints(rest...);
       }
 
@@ -254,7 +269,7 @@ namespace skepu{
       }
 
     template<typename Cont>
-    void get_constraints_helper(Cont& curr){
+    void get_constraints_helper(Cont& curr, bool is_same){
 
       for(auto& c : curr.constraints){
 
@@ -262,38 +277,90 @@ namespace skepu{
           constraints[c.first] = c.second;
         }
       }
-      curr.constraints.clear();
+      if(!is_same){
+        curr.constraints.clear();
+      }
     }
 
 
     void wait_for_constraints(){
 
+      //if(op_nr == 2)
+        //printf("Rank %d, op %lu waiting for: ", rank, op_nr);
+
+
       for(auto& c : constraints){
+
+        //if(op_nr == 2){
+          //printf("(%d, %lu ), ", c.first, c.second);
+        //}
 
         wait_ranks.push_back(c.first);
         wait_for_vclocks(c.second);
 
       }
-      constraints.clear();
 
+      //if(op_nr == 2)
+        //printf("\n");
+
+      constraints.clear();
     }
 
+
+
+    // Flushes every container which has not flushed since the last modifying
+    // operation was performed.
     template<typename Curr, typename... Rest>
     static void flush_rest(Curr& curr, Rest&... rest){
-      if(curr.state != 0){
-        curr.flush();
-      }
+
+      curr.conditional_flush();
       flush_rest(rest...);
     }
 
     static void flush_rest(){}
 
 
+    // Only flush if there are new changes
+    void conditional_flush(){
+
+      //printf("Attempting to flush: op_nr: %lu, last_flush %lu, mod_op %lu\n",
+      //op_nr, last_flush[rank], last_mod_op);
+
+      if(last_flush[rank] <= last_mod_op){
+        flush();
+      }
+    }
+
     void flush(){
 
-      if(state == op_nr){
+      bool empty_buff = last_flush[rank] == 0 && last_mod_op == 0;
+
+      if(empty_buff || last_flush[rank] == op_nr){
         return;
       }
+
+      //printf("Did flush: op_nr: %lu, last_flush %lu, mod_op %lu\n",
+      //op_nr, last_flush[rank], last_mod_op);
+
+      //printf("S %d, E %d, LS %d\n", start_i, end_i, local_size);
+
+      //for(int i = 0; i == 10000; i++){
+      //}
+
+      /*
+      std::memcpy(
+        cont_seg_ptr,
+        local_buffer,
+        sizeof(T) * local_size);
+        return;
+        */
+
+      for(int i = 0; i < nr_nodes; i++){
+        last_flush[i] = op_nr;
+      }
+
+
+
 
       #pragma omp parallel
       {
@@ -504,7 +571,17 @@ namespace skepu{
     T* comm_buffer = ((T*) comm_seg_ptr );
 
     if(i >= start_i && i <= end_i){
-      return ((T*) cont_seg_ptr)[i - start_i];
+
+
+
+      // If we have flushed or if the container has never been modified before
+      // we read from the container rather than buffer
+      if(last_flush[rank] >= last_mod_op || last_flush[rank] == 0){
+        return ((T*) cont_seg_ptr)[i - start_i];
+      }
+      else{
+        return ((T*) local_buffer)[i - start_i];
+      }
     }
 
     int remote_rank = get_owner(i);
@@ -522,6 +599,7 @@ namespace skepu{
     // Check if the work has been done while we were waiting on the lock
     if(comm_buffer_state[remote_rank] == op_nr){
       comm_buffer_locks[remote_rank].unlock();
+      //return -100;
       return comm_buffer[i];
     }
 
@@ -529,10 +607,51 @@ namespace skepu{
     else{
 
       // TODO Wait for the remote rank to reach our current OP number
+      comm_buffer_locks[rank].lock();
+      wait_ranks.push_back(remote_rank);
 
-      unsigned long read_size = remote_rank != rank - 1 ?
-        (norm_partition_size + 1) * sizeof(T) :
-        (last_partition_size + 1) * sizeof(T);
+      // if(last_flush[remote_rank] > last_mod_op){
+      //   // Remote has flushed before this operation and we have a weaker restriction
+      //
+      //   //wait_for_vclocks(op_nr);
+      //
+      //   if(op_nr == 2)
+      //   printf("Weak wait: op_nr: %lu, last_flush %lu, mod_op %lu\n",
+      //   op_nr, last_flush[rank], last_mod_op);
+      //
+      //
+      //   wait_for_vclocks(last_flush[remote_rank]);
+      //
+      // }
+      // else{
+      //   if(op_nr == 2)
+      //   printf("Strong wait: op_nr: %lu, last_flush %lu, mod_op %lu\n",
+      //   op_nr, last_flush[rank], last_mod_op);
+      //
+      //   // The remote has not flushed early and will have to flush during this op
+      //   wait_for_vclocks(op_nr);
+      // }
+
+        if(op_nr == 34)
+        printf("Wait: op_nr: %lu, last_flush %lu, mod_op %lu               ",
+          op_nr, last_flush[rank], last_mod_op);
+
+      wait_for_vclocks(last_flush[remote_rank]);
+
+      comm_buffer_locks[rank].unlock();
+
+      if(op_nr == 34)
+        print_vclock();
+
+
+      unsigned long read_size = remote_rank != nr_nodes - 1 ?
+        (norm_partition_size ) * sizeof(T) :
+        (last_partition_size ) * sizeof(T);
+
+
+        if(op_nr == 244){
+          printf("Seg %d reading seg %d\n", segment_id, segment_id + remote_rank - rank);
+        }
 
 
       // A read notify might be more fitting here
@@ -546,6 +665,12 @@ namespace skepu{
         queue,
         GASPI_BLOCK
       );
+
+
+      // printf("Rank %d reading from rank %d for %lu elems. Local_size = %d"
+      // " Last Size = %d\n", rank, remote_rank, read_size / sizeof(T),
+      //   local_size, last_partition_size);
+
 
       if(res == GASPI_QUEUE_FULL){
         gaspi_wait(queue, GASPI_BLOCK);
@@ -565,6 +690,36 @@ namespace skepu{
       comm_buffer_state[remote_rank] = op_nr;
 
       comm_buffer_locks[remote_rank].unlock();
+
+
+      bool b = remote_rank == nr_nodes - 1;
+      int it = b ? last_partition_size : norm_partition_size;
+      //printf("it = %d\n", it);
+
+      if(op_nr == 244 && rank == 2){
+
+        int s = norm_partition_size * remote_rank;
+        int e = norm_partition_size * remote_rank + it -1;
+
+        printf("index (%d, %d) remote: %d, flush %lu: ", s, e, remote_rank,
+        last_flush[remote_rank]);
+      for(int j = 0; j < it; j++){
+
+
+        std::cout << comm_buffer[norm_partition_size * remote_rank + j] << ", ";
+      }
+      std::cout << "\n";
+      print_vclock();
+    }
+
+
+      //comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
+      //T* comm_buffer = ((T*) comm_seg_ptr );
+
+      if(op_nr == 24)
+        printf("At index %lu (pos 0) is val %d\n", i, comm_buffer[i]);
+
+      //return 100;
       return comm_buffer[i];
 
     }
@@ -641,6 +796,10 @@ namespace skepu{
 
       comm_buffer_locks = new std::mutex[nr_nodes];
 
+
+      last_mod_op = 0;
+      last_flush = (unsigned long*) calloc(nr_nodes, sizeof(unsigned long));
+
     };
 
 
@@ -680,7 +839,7 @@ namespace skepu{
       if(index >= start_i && index <= end_i){
         ((T*) cont_seg_ptr)[index - start_i] = value;
       }
-      vclock[rank] = ++op_nr;
+      //vclock[rank] = ++op_nr;
     }
 
 
@@ -689,45 +848,37 @@ namespace skepu{
     }
 
 
-    // Gets a specific value from the Matrix. Either fetch the remote value
-    // or wait untill all remotes have read our local value, then return.
-    //
-    // TODO A distributed distribution scheme of this value should be implemented.
-    // currently we might overload a single node
     T operator[](const size_t index){
 
       if(index >= start_i && index <= end_i){
         // The value is local, wait until we have distributed the value
-        gaspi_notification_id_t notify_id;
-        gaspi_notification_t notify_val;
 
-        // Wait for notification from all nodes
-        for(int i = 0; i < nr_nodes - 1; ++i){
+        wait_for_constraints();
+        conditional_flush();
+        vclock[rank] = ++op_nr;
 
-          // Note that we wait for notifs from start to start + #notifs - 1
-          gaspi_notify_waitsome(
-            segment_id,
-            notif_ctr * nr_nodes, // notif start
-            nr_nodes, // number of notifs
-            &notify_id,
-            GASPI_BLOCK
-          );
-          gaspi_notify_reset(segment_id, notify_id, &notify_val);
-
+        for(int i = 0; i < nr_nodes; i++){
+          if(i == rank){
+            continue;
+          }
+          constraints[i] = op_nr;
         }
 
-        ++notif_ctr;
-        vclock[rank] = ++op_nr;
         return ((T*) cont_seg_ptr)[index - start_i];
       }
       else{
+        vclock[rank] = ++op_nr;
+
         // The rank holding the value
         int dest_rank = get_owner(index);
+        wait_ranks.push_back(dest_rank);
+
+        //long unsigned foo = std::min(last_flush[dest_rank])
+
+        wait_for_vclocks(last_flush[dest_rank]);
+
 
         // Wait until the rank is on the current OP
-         wait_ranks.clear();
-         wait_ranks.push_back(dest_rank);
-         wait_for_vclocks(op_nr);
 
         auto res = gaspi_read(
           segment_id,
@@ -774,6 +925,15 @@ namespace skepu{
       }
     }
 
+    void print_vclock(){
+      std::cout << "Rank " << rank << " has vclock: ";
+
+      for(int i = 0; i < nr_nodes; i++){
+        std::cout << vclock[i] << ", ";
+      }
+
+      std::cout << std::endl;
+    }
 
 
     // WARNING Only use this for debugging, it has very poor performance
@@ -781,6 +941,9 @@ namespace skepu{
       gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
       op_nr++;
+
+      wait_for_constraints();
+      //print_vclock();
       flush();
 
       for(int i = 0; i < nr_nodes; i++){
@@ -799,6 +962,47 @@ namespace skepu{
         printf("\n");
       }
     }
+
+    void print_buff(){
+      //gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+
+      op_nr++;
+      //flush();
+
+      for(int i = 0; i < nr_nodes; i++){
+        if(i == rank){
+          for(int j = 0; j < local_size; j++){
+            std::cout << ((T*) local_buffer)[j] << ", ";
+          }
+          std::cout << std::endl;
+        }
+        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+      }
+
+      // The sleep makes multiple prints prettier
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      if(rank == 0){
+        printf("\n");
+      }
+    }
+
+
+    // TODO Remove
+    void foobar(){
+      //flush();
+
+      T* ptr = (T*) cont_seg_ptr;
+
+      for(int i = 0; i < local_size; i++){
+
+        if(ptr[i] != local_buffer[i]){
+          printf("cont: %d, buff %d\n", ptr[i], local_buffer[i]);
+        }
+
+      }
+
+    }
+
 
 
     template<typename Lambda>

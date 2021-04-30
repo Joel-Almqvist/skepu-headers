@@ -72,6 +72,7 @@ namespace skepu{
       virtual ~Container(){
         curr_containers--;
         gaspi_wait(queue, GASPI_BLOCK);
+        gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
         gaspi_segment_delete(segment_id);
       }
     };
