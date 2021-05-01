@@ -75,14 +75,6 @@ namespace skepu{
     unsigned long* last_flush;
 
 
-    /* TODO Remove!
-    // Global information regarding offset
-    long last_partition_vclock_offset;
-    long norm_vclock_offset;
-
-    // This object's offset
-    long vclock_offset;
-    */
     // The OP number of the remote when its container was fetched
     std::atomic_ulong* comm_buffer_state;
     std::mutex* comm_buffer_locks;
@@ -234,18 +226,7 @@ namespace skepu{
             break;
           }
           else{
-            // TODO Remove
-            // std::cout << "Rank " << rank << " waiting on ranks: ";
-            //
-            // for(int i = 0; i < wait_ranks.size(); i++){
-            //   std::cout << wait_ranks[i] << ", ";
-            // }
-            // std::cout << "  and value " << wait_val << std::endl;
-
-
-            // Sleep TODO change val
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
-
           }
         }
       }
@@ -285,24 +266,12 @@ namespace skepu{
 
     void wait_for_constraints(){
 
-      //if(op_nr == 2)
-        //printf("Rank %d, op %lu waiting for: ", rank, op_nr);
-
-
       for(auto& c : constraints){
-
-        //if(op_nr == 2){
-          //printf("(%d, %lu ), ", c.first, c.second);
-        //}
 
         wait_ranks.push_back(c.first);
         wait_for_vclocks(c.second);
 
       }
-
-      //if(op_nr == 2)
-        //printf("\n");
-
       constraints.clear();
     }
 
@@ -323,9 +292,6 @@ namespace skepu{
     // Only flush if there are new changes
     void conditional_flush(){
 
-      //printf("Attempting to flush: op_nr: %lu, last_flush %lu, mod_op %lu\n",
-      //op_nr, last_flush[rank], last_mod_op);
-
       if(last_flush[rank] <= last_mod_op){
         flush();
       }
@@ -339,26 +305,9 @@ namespace skepu{
         return;
       }
 
-      //printf("Did flush: op_nr: %lu, last_flush %lu, mod_op %lu\n",
-      //op_nr, last_flush[rank], last_mod_op);
-
-      //printf("S %d, E %d, LS %d\n", start_i, end_i, local_size);
-
-      //for(int i = 0; i == 10000; i++){
-      //}
-
-      /*
-      std::memcpy(
-        cont_seg_ptr,
-        local_buffer,
-        sizeof(T) * local_size);
-        return;
-        */
-
       for(int i = 0; i < nr_nodes; i++){
-        last_flush[i] = op_nr;
+        last_flush[i] = op_nr + 1;
       }
-
 
 
 
@@ -375,6 +324,17 @@ namespace skepu{
           (value_type*) local_buffer + omp_get_thread_num() * t_step,
            sizeof(T) * size);
       }
+    }
+
+
+    // To be called whenever a remote rank calls a conditional flush in order
+    // to track the remote's flush status.
+    void remote_conditional_flush(int remote_rank){
+
+      if(last_flush[remote_rank] <= last_mod_op){
+        last_flush[remote_rank] = op_nr + 1;
+      }
+
     }
 
 
@@ -469,77 +429,6 @@ namespace skepu{
     }
 
 
-
-
-    /* TODO Remove these functions!
-
-    // Given a list of Matrices and other types returns the highest OP number
-    // of the matrices.
-    template<typename ... Rest>
-    static unsigned long max_op(Rest&... rest){
-      return max_op(int{0}, 0, rest...);
-    }
-
-
-    template<typename First, typename ... Rest>
-    static unsigned long max_op(int SFINAE, unsigned long acc, Matrix<First>& first,
-      Rest&... rest){
-      return max_op(int{}, std::max(acc, first.op_nr), rest...);
-    }
-
-    template<typename First, typename ... Rest>
-    static unsigned long max_op(double SFINAE, unsigned long acc, First&& first,
-      Rest&... rest){
-      return max_op(int{}, acc, rest...);
-    }
-
-
-    template<typename Last>
-    static unsigned long max_op(int SFINAE, unsigned long acc, Matrix<Last>& last){
-      return std::max(acc, last.op_nr);
-    }
-
-    template<typename Last>
-    static unsigned long max_op(double SFINAE, unsigned long acc, Last&& last){
-      return acc;
-    }
-
-
-
-  template<typename ... Rest>
-  static void set_op_nr(unsigned long val, Rest&... rest){
-    set_op_nr_helper(int{}, val, rest...);
-  }
-
-  template<typename First, typename ... Rest>
-  static void set_op_nr_helper(int SFINAE, unsigned long val, Matrix<First>& first,
-     Rest&... rest){
-    first.op_nr = val;
-    first.vclock[first.rank] = val;
-    set_op_nr_helper(int{}, val, rest...);
-  }
-
-
-  template<typename First, typename ... Rest>
-  static void set_op_nr_helper(double SFINAE, unsigned long val,
-    First&& first, Rest&... rest){
-    set_op_nr_helper(int{}, val, rest...);
-  }
-
-  template<typename Last>
-  static void set_op_nr_helper(int SFINAE, unsigned long val,
-      Matrix<Last>& last){
-    last.op_nr = val;
-    last.vclock[last.rank] = val;
-  }
-
-  template<typename Last>
-  static void set_op_nr_helper(double SFINAE, unsigned long val,
-      Last& last){
-  }
-
-  */
-
   long get_comm_offset(size_t inc_rank){
     if(inc_rank != nr_nodes -1){
       return norm_partition_comm_offset;
@@ -563,24 +452,22 @@ namespace skepu{
   }
 
 
-  /* Fetches a potentially remote value. If needed it fills the communication
-  * buffer with a remote nodes values. The function is thread safe and assumes
-  * a not changing op number during the multithreaded runs of it.
-  */
+  // Fetches a potentialy remote value.
   T proxy_get(const size_t i){
     T* comm_buffer = ((T*) comm_seg_ptr );
 
     if(i >= start_i && i <= end_i){
 
-
-
-      // If we have flushed or if the container has never been modified before
-      // we read from the container rather than buffer
       if(last_flush[rank] >= last_mod_op || last_flush[rank] == 0){
+
+        // If we have flushed or if the container has never been modified before
+        // we read from the container rather than buffer
         return ((T*) cont_seg_ptr)[i - start_i];
       }
       else{
+
         return ((T*) local_buffer)[i - start_i];
+
       }
     }
 
@@ -588,8 +475,9 @@ namespace skepu{
     unsigned long remote_size = remote_rank == nr_nodes - 1 ?
       last_partition_size : norm_partition_size;
 
-
-    if(comm_buffer_state[remote_rank] == op_nr){
+    // The remote value is cached and up to date
+    if(comm_buffer_state[remote_rank] > last_mod_op
+      && comm_buffer_state[remote_rank] != ULONG_MAX){
       return comm_buffer[i];
     }
 
@@ -599,59 +487,22 @@ namespace skepu{
     // Check if the work has been done while we were waiting on the lock
     if(comm_buffer_state[remote_rank] == op_nr){
       comm_buffer_locks[remote_rank].unlock();
-      //return -100;
       return comm_buffer[i];
     }
 
-    // We are the first to get the lock and need to fetch the remote values
     else{
 
-      // TODO Wait for the remote rank to reach our current OP number
       comm_buffer_locks[rank].lock();
+
       wait_ranks.push_back(remote_rank);
-
-      // if(last_flush[remote_rank] > last_mod_op){
-      //   // Remote has flushed before this operation and we have a weaker restriction
-      //
-      //   //wait_for_vclocks(op_nr);
-      //
-      //   if(op_nr == 2)
-      //   printf("Weak wait: op_nr: %lu, last_flush %lu, mod_op %lu\n",
-      //   op_nr, last_flush[rank], last_mod_op);
-      //
-      //
-      //   wait_for_vclocks(last_flush[remote_rank]);
-      //
-      // }
-      // else{
-      //   if(op_nr == 2)
-      //   printf("Strong wait: op_nr: %lu, last_flush %lu, mod_op %lu\n",
-      //   op_nr, last_flush[rank], last_mod_op);
-      //
-      //   // The remote has not flushed early and will have to flush during this op
-      //   wait_for_vclocks(op_nr);
-      // }
-
-        if(op_nr == 34)
-        printf("Wait: op_nr: %lu, last_flush %lu, mod_op %lu               ",
-          op_nr, last_flush[rank], last_mod_op);
-
       wait_for_vclocks(last_flush[remote_rank]);
 
       comm_buffer_locks[rank].unlock();
-
-      if(op_nr == 34)
-        print_vclock();
 
 
       unsigned long read_size = remote_rank != nr_nodes - 1 ?
         (norm_partition_size ) * sizeof(T) :
         (last_partition_size ) * sizeof(T);
-
-
-        if(op_nr == 244){
-          printf("Seg %d reading seg %d\n", segment_id, segment_id + remote_rank - rank);
-        }
 
 
       // A read notify might be more fitting here
@@ -665,12 +516,6 @@ namespace skepu{
         queue,
         GASPI_BLOCK
       );
-
-
-      // printf("Rank %d reading from rank %d for %lu elems. Local_size = %d"
-      // " Last Size = %d\n", rank, remote_rank, read_size / sizeof(T),
-      //   local_size, last_partition_size);
-
 
       if(res == GASPI_QUEUE_FULL){
         gaspi_wait(queue, GASPI_BLOCK);
@@ -691,35 +536,6 @@ namespace skepu{
 
       comm_buffer_locks[remote_rank].unlock();
 
-
-      bool b = remote_rank == nr_nodes - 1;
-      int it = b ? last_partition_size : norm_partition_size;
-      //printf("it = %d\n", it);
-
-      if(op_nr == 244 && rank == 2){
-
-        int s = norm_partition_size * remote_rank;
-        int e = norm_partition_size * remote_rank + it -1;
-
-        printf("index (%d, %d) remote: %d, flush %lu: ", s, e, remote_rank,
-        last_flush[remote_rank]);
-      for(int j = 0; j < it; j++){
-
-
-        std::cout << comm_buffer[norm_partition_size * remote_rank + j] << ", ";
-      }
-      std::cout << "\n";
-      print_vclock();
-    }
-
-
-      //comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
-      //T* comm_buffer = ((T*) comm_seg_ptr );
-
-      if(op_nr == 24)
-        printf("At index %lu (pos 0) is val %d\n", i, comm_buffer[i]);
-
-      //return 100;
       return comm_buffer[i];
 
     }
@@ -850,10 +666,11 @@ namespace skepu{
 
     T operator[](const size_t index){
 
+      // Local value
       if(index >= start_i && index <= end_i){
-        // The value is local, wait until we have distributed the value
 
         wait_for_constraints();
+
         conditional_flush();
         vclock[rank] = ++op_nr;
 
@@ -866,63 +683,55 @@ namespace skepu{
 
         return ((T*) cont_seg_ptr)[index - start_i];
       }
-      else{
-        vclock[rank] = ++op_nr;
 
-        // The rank holding the value
-        int dest_rank = get_owner(index);
-        wait_ranks.push_back(dest_rank);
+      // The value is remote
 
-        //long unsigned foo = std::min(last_flush[dest_rank])
+      int remote_rank = get_owner(index);
+      remote_conditional_flush(remote_rank);
 
-        wait_for_vclocks(last_flush[dest_rank]);
+      T* comm_buffer = ((T*) comm_seg_ptr );
+      vclock[rank] = ++op_nr;
+
+      // Check if we have the value cached
+      if(comm_buffer_state[remote_rank] <= last_mod_op
+        || comm_buffer_state[remote_rank] == ULONG_MAX){
+
+          wait_ranks.push_back(remote_rank);
+          wait_for_vclocks(last_flush[remote_rank]);
 
 
-        // Wait until the rank is on the current OP
+          unsigned long remote_size = remote_rank == nr_nodes - 1 ?
+          last_partition_size * sizeof(T): norm_partition_size * sizeof(T);
 
-        auto res = gaspi_read(
-          segment_id,
-          comm_offset,
-          dest_rank,
-          segment_id + dest_rank - rank, // remote segment id
-          sizeof(T) * (index - norm_partition_size * dest_rank), // Remote offset
-          sizeof(T),
-          queue,
-          GASPI_BLOCK
-        );
-
-        if(res == GASPI_QUEUE_FULL){
-          gaspi_wait(queue, GASPI_BLOCK);
-
-          gaspi_read(
+          auto res = gaspi_read(
             segment_id,
-            comm_offset,
-            dest_rank,
-            segment_id + dest_rank - rank, // remote segment id
-            sizeof(T) * (index - norm_partition_size * dest_rank), // Remote offset
-            sizeof(T),
+            comm_offset + norm_partition_size * remote_rank * sizeof(T),
+            remote_rank,
+            segment_id + remote_rank - rank, // remote segment id
+            0, // Remote offset
+            remote_size,
             queue,
             GASPI_BLOCK
           );
+
+          if(res == GASPI_QUEUE_FULL){
+            gaspi_wait(queue, GASPI_BLOCK);
+            gaspi_read(
+              segment_id,
+              comm_offset + norm_partition_size * remote_rank * sizeof(T),
+              remote_rank,
+              segment_id + remote_rank - rank, // remote segment id
+              0, // Remote offset
+              remote_size,
+              queue,
+              GASPI_BLOCK
+            );
+          }
+          gaspi_wait(queue, GASPI_BLOCK);
+          comm_buffer_state[remote_rank] = op_nr;
         }
 
-        // Wait for read to finish
-        gaspi_wait(queue, GASPI_BLOCK);
-
-        // Notify the remote that we have read the value
-        gaspi_notify(
-          segment_id + dest_rank - rank, // remote segment
-          dest_rank,
-          notif_ctr * nr_nodes + rank, // notif id
-          13, // notif val, not used
-          queue,
-          GASPI_BLOCK
-        );
-
-        ++notif_ctr;
-        vclock[rank] = ++op_nr;
-        return ((T*) comm_seg_ptr)[0];
-      }
+        return comm_buffer[index];
     }
 
     void print_vclock(){
@@ -985,24 +794,6 @@ namespace skepu{
         printf("\n");
       }
     }
-
-
-    // TODO Remove
-    void foobar(){
-      //flush();
-
-      T* ptr = (T*) cont_seg_ptr;
-
-      for(int i = 0; i < local_size; i++){
-
-        if(ptr[i] != local_buffer[i]){
-          printf("cont: %d, buff %d\n", ptr[i], local_buffer[i]);
-        }
-
-      }
-
-    }
-
 
 
     template<typename Lambda>

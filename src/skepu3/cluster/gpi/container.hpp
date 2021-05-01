@@ -38,11 +38,6 @@ namespace skepu{
       gaspi_pointer_t comm_seg_ptr;
 
       unsigned long& op_nr;
-      unsigned long state;
-
-      // Use a short due to gaspi_notification_id_t being of that type
-      // and all calculations using this will be converted to that type.
-      short unsigned notif_ctr;
 
       // Must be initialized by derived classes
       unsigned long* vclock;
@@ -62,8 +57,6 @@ namespace skepu{
         segment_id = created_containers * nr_nodes + rank + 1;
         //segment_id = created_containers;
 
-        state = 0;
-        notif_ctr = 0;
         curr_containers++;
         created_containers++;
       }

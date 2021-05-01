@@ -155,104 +155,15 @@ namespace skepu{
      void setReduceMode(){};
 
 
-     template<typename DestCont, typename ... Conts>
-      auto apply_old(DestCont& dest_cont, Conts&... conts) ->
-      decltype(
-        std::declval<typename DestCont::is_skepu_container>(),
-        std::declval<void>()){
-
-          using T = typename DestCont::value_type;
-          using tup_type = _gpi::tuple_of<nr_args, T>;
-
-          static_assert(nr_args == sizeof...(Conts), "Missmatching number of arguments");
-
-          if(DestCont::smallest(dest_cont, conts...) < dest_cont.global_size){
-            throw std::logic_error("Can not map a smaller container into a larger one");
-          }
-
-          // These functions have been removed
-          //unsigned long this_op_nr = DestCont::max_op(dest_cont, conts...) + 1;
-          //DestCont::set_op_nr(this_op_nr, dest_cont, conts...);
-
-          T* const dest_ptr = (T*) dest_cont.cont_seg_ptr;
-
-          long lowest = DestCont::lowest_shared_i(conts...);
-          long highest = DestCont::highest_shared_i(conts...);
-
-          if(highest < lowest){
-            // No overlap
-            highest = -1;
-            lowest = -1;
-          }
-
-          #pragma omp parallel
-          {
-
-            int glob_i;
-            tup_type tup{};
-
-            // Handle pure local indeces only if they exist
-            if(highest != -1 && lowest != -1){
-
-            // Dynamic scheduling as to not overload the thread building the
-            // buffer. Another solution is to not give the buffer building
-            // thread any work whatsoever and use static scheduling.
-              #pragma omp for schedule(static)
-              for(int glob_i = lowest; glob_i <= highest; glob_i++){
-                int i = glob_i - dest_cont.start_i;
-
-                // The template arg is used to traverse the tupel starting at 0
-                build_tuple<0>(glob_i, true, dest_cont, tup, conts...);
-
-                dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
-              }
-            }
-
-            #pragma omp single
-            {
-              // TODO build buffer has been modified and needs to be
-              // repurposed for this usage
-              //dest_cont.build_buffer(true, double{}, conts...);
-            }
-              // After the above barrier we guarantee that:
-            // 1 -  The pure local operations are done
-            // 2 - Our read requests have been sent (but not neccesarily finished)
-            // 3 - All the ranks we will read are on the same operation as us.
-
-
-            // Handle non-purely-local indeces only if they exist
-            if(!(lowest == dest_cont.start_i && highest == dest_cont.end_i)){
-
-
-              // The remaining work all use remote information and may require
-              // waiting, but static scheduling still seem to have superior
-              // performance since the drift between nodes is generally very low.
-              #pragma omp for schedule(static)
-              for(int glob_i = dest_cont.start_i; glob_i < lowest; glob_i++){
-                int i = glob_i - dest_cont.start_i;
-
-                build_tuple<0>(glob_i, false, dest_cont, tup, conts...);
-
-                dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
-              }
-
-              #pragma omp for schedule(static)
-              for(int glob_i = highest + 1; glob_i <= dest_cont.end_i; glob_i++){
-                int i = glob_i - dest_cont.start_i;
-
-                build_tuple<0>(glob_i, false, dest_cont, tup, conts...);
-
-                dest_ptr[i] = _gpi::dummy<0, true>::exec(func, tup);
-              }
-          }
-        } // end of parallel region
-      }
-
 
       // Work in progress
       template<typename DestCont, typename ... Args>
       void apply(DestCont& dest, Args&&... args)
       {
+
+        // TODO Make this call two separate functions depending on there is a
+        // random access operator or not in the arguments
+
         if(uses_random_access){
           std::cout << "Applying assuming atleast one random access iterator\n";
         }
@@ -282,23 +193,18 @@ namespace skepu{
 
 
         dest.get_constraints(args...);
-        // TODO here we must flush if needed
         dest.wait_for_constraints();
 
 
-        dest.op_nr++;
 
         // TODO not all of args must be a container
         DestCont::flush_rest(dest, args...);
 
+        // Increment after the flush to guarantee the reads to be safe
+        dest.op_nr++;
 
         // Remember that these variables are globally shared among containers
         dest.vclock[dest.rank] = dest.op_nr;
-
-
-
-        // TODO Remove
-        dest.state = dest.op_nr;
 
 
         // Pre fetch all remote values we know that we want
