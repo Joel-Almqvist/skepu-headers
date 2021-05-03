@@ -239,15 +239,22 @@ namespace skepu{
     * Clears the constraint of non dest members.
     */
     template<typename Curr, typename... Rest>
-    void get_constraints(Curr& curr,
+    void get_constraints(int sfinae, Matrix<Curr>& curr,
       Rest&... rest){
         get_constraints_helper(curr, curr == *this);
-        get_constraints(rest...);
+        get_constraints(int{}, rest...);
       }
 
+      template<typename Curr, typename... Rest>
+      void get_constraints(long sfinae, Curr& curr,
+        Rest&... rest){
+          get_constraints(int{}, rest...);
+        }
+
     // Sink
-    void get_constraints(){
-      }
+    void get_constraints(int){}
+
+    void get_constraints(long){}
 
     template<typename Cont>
     void get_constraints_helper(Cont& curr, bool is_same){
@@ -280,13 +287,20 @@ namespace skepu{
     // Flushes every container which has not flushed since the last modifying
     // operation was performed.
     template<typename Curr, typename... Rest>
-    static void flush_rest(Curr& curr, Rest&... rest){
+    static void flush_rest(int sfinae, Matrix<Curr>& curr, Rest&... rest){
 
       curr.conditional_flush();
-      flush_rest(rest...);
+      flush_rest(sfinae, rest...);
     }
 
-    static void flush_rest(){}
+    template<typename Curr, typename... Rest>
+    static void flush_rest(long sfinae, Curr& curr, Rest&... rest){
+      flush_rest(sfinae, rest...);
+    }
+
+    static void flush_rest(int){}
+
+    static void flush_rest(long){}
 
 
     // Only flush if there are new changes
@@ -337,6 +351,58 @@ namespace skepu{
 
     }
 
+
+
+    /* Takes in a rank, index, accumulator, decision flag and a variadic list
+    * of matrices mixed with constants. Given this it either returns the highest
+    * or lowest rank which contains this index in any of the containers.
+    */
+    template<typename Curr, typename... Rest>
+    static int find_rank_overlap(
+      int sfinae,
+      int remote_rank,
+      long unsigned i,
+      int acc,
+      bool find_min,
+      Matrix<Curr>& curr,
+      Rest&... rest){
+
+        int new_acc;
+        if(find_min){
+          new_acc = std::min(acc, curr.get_owner(i));
+        }
+        else{
+          new_acc = std::max(acc, curr.get_owner(i));
+        }
+
+        return find_rank_overlap(sfinae, remote_rank, i, new_acc, find_min, rest...);
+
+    }
+
+
+    template<typename Curr, typename... Rest>
+    static int find_rank_overlap(
+      long sfinae,
+      int remote_rank,
+      long unsigned i,
+      int acc,
+      bool find_min,
+      Curr& curr,
+      Rest&... rest){
+
+         return find_rank_overlap(sfinae, remote_rank, i, acc, find_min, rest...);
+
+    }
+
+    // Sink
+    static int find_rank_overlap(long sfinae, int remote_rank, long unsigned,
+    int acc, bool){
+      return acc;
+    }
+    static int find_rank_overlap(int sfinae, int remote_rank, long unsigned,
+    int acc, bool){
+      return acc;
+    }
 
 
     /* Fetches all indeces between our own start_i to end_i from the remote
@@ -773,10 +839,8 @@ namespace skepu{
     }
 
     void print_buff(){
-      //gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
       op_nr++;
-      //flush();
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){

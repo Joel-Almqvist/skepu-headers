@@ -33,8 +33,6 @@ namespace skepu{
 
     const bool uses_random_access;
 
-    //using arg_tup_t = typename _gpi::get_tup_t<Function, nr_args - 1>::type;
-
     using arg_tup_t = typename std::tuple<Func_args...>;
 
 
@@ -52,9 +50,7 @@ namespace skepu{
         build_tuple_local<ctr>(i, dest, tup, curr);
 
         // Early break if the tuple need a remote value
-        //if(tup_flag != -1){
           build_tuple<ctr + 1>(i, local_only, dest, tup, rest...);
-        //}
       }
 
       else{
@@ -156,24 +152,6 @@ namespace skepu{
 
 
 
-      // Work in progress
-      template<typename DestCont, typename ... Args>
-      void apply(DestCont& dest, Args&&... args)
-      {
-
-        // TODO Make this call two separate functions depending on there is a
-        // random access operator or not in the arguments
-
-        if(uses_random_access){
-          std::cout << "Applying assuming atleast one random access iterator\n";
-        }
-        else{
-          std::cout << "Applying without random access iterators\n";
-        }
-      }
-
-
-
       template<typename DestCont, typename ... Args>
       void operator()(DestCont& dest, Args&&... args)
       {
@@ -187,18 +165,18 @@ namespace skepu{
         const bool case2 = !std::is_same<arg_0_t, Index1D>::value &&
           sizeof...(args) == nr_args;
 
+
         static_assert(case1 || case2);
 
         using T = typename DestCont::value_type;
 
 
-        dest.get_constraints(args...);
+        dest.get_constraints(int{}, args...);
         dest.wait_for_constraints();
 
 
 
-        // TODO not all of args must be a container
-        DestCont::flush_rest(dest, args...);
+        DestCont::flush_rest(int{}, dest, args...);
 
         // Increment after the flush to guarantee the reads to be safe
         dest.op_nr++;
@@ -230,15 +208,63 @@ namespace skepu{
         dest.last_mod_op = dest.op_nr;
         dest.vclock[dest.rank] = ++dest.op_nr;
 
-        // Due to the random access we have constraints to all nodes
-        for(int i = 0; i < dest.nr_nodes; i++){
-          if(i == dest.rank){
-            continue;
+
+        // Add constraints
+        if(uses_random_access){
+          // Due to the random access we have constraints to all nodes
+          for(int i = 0; i < dest.nr_nodes; i++){
+            if(i == dest.rank){
+              continue;
+            }
+            dest.constraints[i] = dest.op_nr;
           }
-          dest.constraints[i] = dest.op_nr;
         }
 
+        else{
 
+          long unsigned lowest_i;
+          long unsigned highest_i;
+
+          int lowest_rank;
+          int highest_rank;
+
+          // Calculate which nodes every remote is going to contact and create
+          // constraints to any node which will read from us.
+          for(int i = 0; i < dest.nr_nodes; i++){
+
+            if(i == dest.rank)
+              continue;
+
+            lowest_i = i * dest.norm_partition_size;
+
+            if(i != dest.nr_nodes - 1 ){
+              highest_i = (i + 1) * dest.norm_partition_size;
+            }
+            else{
+              highest_i = dest.global_size - 1;
+            }
+
+            lowest_rank = DestCont::find_rank_overlap(
+              int{},
+              i,
+              lowest_i,
+              dest.nr_nodes, // start the accumulator at impossible value
+              true,
+              dest, args...);
+
+            highest_rank = DestCont::find_rank_overlap(
+              int{},
+              i,
+              lowest_i,
+              -1, // start the accumulator at impossible value
+              false,
+              dest, args...);
+
+            if(lowest_rank <= dest.rank && dest.rank <= highest_rank){
+              dest.constraints[i] = dest.op_nr;
+            }
+          }
+        }
       }
   };
 
