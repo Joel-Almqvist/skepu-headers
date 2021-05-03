@@ -20,21 +20,103 @@ namespace skepu{
     Reduce1D(ReduceFunc func) : func{func} {};
 
 
-
+    // If no initial value is given we use a default value
     template<typename Container>
     typename Container::value_type apply(Container& cont){
       using T = typename Container::value_type;
+      return apply(cont, T{});
+    }
 
-      // gaspi_all_reduce(
-      //   cont.cont_seg_ptr, // send
-      //   cont.comm_seg_ptr, // receive
-      //   cont.local_size, // amount of elements to send
-      //   sizeof(T), // size of elems
-      //   func, // op
-      //   reduce_statevec,
-      //   GASPI_GROUP_ALL,
-      //   GASPI_BLOCK
-      // );
+
+
+    template<typename Container, typename Val>
+    typename Container::value_type apply(Container& cont, Val init){
+      using T = typename Container::value_type;
+
+      static_assert(std::is_same<T, Val>::value);
+
+
+      cont.wait_for_constraints();
+      //cont.conditional_flush();
+
+      cont.op_nr++;
+      cont.vclock[cont.rank] = cont.op_nr;
+
+      // Calculate the local value
+      #pragma omp parallel
+      {
+
+        // TODO this needs to change depending on flush status
+        T* from = (T*) cont.local_buffer;
+
+        T& to = *((T*) cont.comm_seg_ptr + cont.norm_partition_size * cont.rank
+          + omp_get_thread_num());
+
+        bool first_time = false;
+
+        #pragma omp for schedule(static)
+        for(size_t i = 0; i <= cont.end_i - cont.start_i; ++i){
+
+          if(first_time){
+            first_time = false;
+            to = from[i];
+          }
+          else{
+            to = func(to, from[i]);
+          }
+        }
+
+        #pragma omp single
+        {
+          to = func(to, init);
+        }
+
+        #pragma omp barrier
+
+        if(omp_get_thread_num() == 0){
+
+          T* other_res = (T*) cont.comm_seg_ptr + cont.norm_partition_size *
+            cont.rank;
+
+          for(int i = 1; i < omp_get_num_threads(); ++i){
+            to = func(to, other_res[i]);
+          }
+        }
+      }
+
+      // Indicate to other ranks that our value is ready to be used
+      cont.op_nr++;
+      cont.vclock[cont.rank] = cont.op_nr;
+
+      int i = cont.rank == cont.nr_nodes - 1 ? 0 : cont.rank + 1;
+      bool has_looped = false;
+      while(true){
+
+
+        cont.wait_ranks.push_back(i);
+        cont.wait_for_vclocks(cont.op_nr);
+
+        // TODO Read from rank
+
+        // TODO apply the function
+
+        // TODO create a distributed version of this insteads
+
+
+        ++i;
+        if(i == cont.rank){
+         ++i;
+       }
+        if(i == cont.nr_nodes -1 && !has_looped){
+          i = 0;
+        }
+        else if(i >= cont.nr_nodes){
+          break;
+        }
+      }
+
+      return 4;
+
 
     }
 

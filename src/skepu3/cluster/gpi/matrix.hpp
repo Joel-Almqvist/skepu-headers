@@ -311,6 +311,7 @@ namespace skepu{
       }
     }
 
+    // Flush as long as there are the buffer is not garbage
     void flush(){
 
       bool empty_buff = last_flush[rank] == 0 && last_mod_op == 0;
