@@ -35,9 +35,7 @@ namespace skepu{
 
       static_assert(std::is_same<T, Val>::value);
 
-
       cont.wait_for_constraints();
-      //cont.conditional_flush();
 
       cont.op_nr++;
       cont.vclock[cont.rank] = cont.op_nr;
@@ -68,7 +66,8 @@ namespace skepu{
 
         #pragma omp single
         {
-          to = func(to, init);
+          // TODO This should be done once per NODE not once per thread
+          //to = func(to, init);
         }
 
         #pragma omp barrier
@@ -85,39 +84,106 @@ namespace skepu{
       }
 
       // Indicate to other ranks that our value is ready to be used
-      cont.op_nr++;
-      cont.vclock[cont.rank] = cont.op_nr;
+      cont.vclock[cont.rank] = ++cont.op_nr;
 
-      int i = cont.rank == cont.nr_nodes - 1 ? 0 : cont.rank + 1;
-      bool has_looped = false;
-      while(true){
+      int iterations = std::ceil(std::log2(cont.nr_nodes));
+      int dest_rank;
+      int step;
+      int prev_step;
+      unsigned remote_offset;
 
+      T& loc_val = *((T*) cont.comm_seg_ptr +
+        cont.norm_partition_size * cont.rank);
 
-        cont.wait_ranks.push_back(i);
-        cont.wait_for_vclocks(cont.op_nr);
+      T& rec_val = *((T*) cont.comm_seg_ptr +
+        cont.norm_partition_size * cont.rank + 1);
 
-        // TODO Read from rank
+      // A distributed gather which in the end puts the data to node 0
+      for(int i = 0; i < iterations; i++){
 
-        // TODO apply the function
+        step = pow(2, i + 1);
+        prev_step = pow(2, i);
 
-        // TODO create a distributed version of this insteads
+          if(cont.rank % step == 0){
 
+            dest_rank = cont.rank + prev_step;
 
-        ++i;
-        if(i == cont.rank){
-         ++i;
-       }
-        if(i == cont.nr_nodes -1 && !has_looped){
-          i = 0;
-        }
-        else if(i >= cont.nr_nodes){
-          break;
-        }
+            if(dest_rank < cont.nr_nodes){
+              cont.wait_ranks.push_back(dest_rank);
+              cont.wait_for_vclocks(cont.op_nr);
+
+              if(dest_rank == cont.nr_nodes - 1){
+                remote_offset = cont.last_partition_comm_offset +
+                  sizeof(T) * cont.norm_partition_size * dest_rank;
+              }
+              else{
+                remote_offset = cont.norm_partition_comm_offset +
+                  sizeof(T) * cont.norm_partition_size * dest_rank;
+              }
+
+              gaspi_read(
+                cont.segment_id,
+                cont.comm_offset + (cont.start_i + 1) * sizeof(T), // local offset
+                dest_rank,
+                cont.segment_id - cont.rank + dest_rank, // rem seg id
+                remote_offset,
+                sizeof(T), //size
+                cont.queue,
+                GASPI_BLOCK
+              );
+
+              gaspi_wait(cont.queue, GASPI_BLOCK);
+
+              loc_val = func(loc_val, rec_val);
+
+            }
+          }
+          cont.vclock[cont.rank] = ++cont.op_nr;
       }
 
-      return 4;
+
+      // A distributed broadcast from node 0 to all the other.
+      for(int i = 0; i < iterations; i++){
 
 
+        step = pow(2, i + 1);
+        prev_step = pow(2, i);
+
+        if(cont.rank >= prev_step && cont.rank < step){
+
+          dest_rank = cont.rank - prev_step;
+
+          cont.wait_ranks.push_back(dest_rank);
+          cont.wait_for_vclocks(cont.op_nr);
+
+
+          if(dest_rank == cont.nr_nodes - 1){
+            remote_offset = cont.last_partition_comm_offset +
+              sizeof(T) * cont.norm_partition_size * dest_rank;
+          }
+          else{
+            remote_offset = cont.norm_partition_comm_offset +
+              sizeof(T) * cont.norm_partition_size * dest_rank;
+          }
+
+          gaspi_read(
+            cont.segment_id,
+            cont.comm_offset + cont.start_i * sizeof(T), // local offset
+            dest_rank,
+            cont.segment_id - cont.rank + dest_rank, // rem seg id
+            remote_offset,
+            sizeof(T), //size
+            cont.queue,
+            GASPI_BLOCK
+          );
+
+          gaspi_wait(cont.queue, GASPI_BLOCK);
+
+        }
+        cont.vclock[cont.rank] = ++cont.op_nr;
+      }
+
+      return loc_val;
     }
 
 
