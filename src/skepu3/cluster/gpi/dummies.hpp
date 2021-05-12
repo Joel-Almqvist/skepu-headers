@@ -29,6 +29,12 @@ namespace skepu{
   struct BackendSpec{
     template <typename... T>
     BackendSpec(T...){};
+
+
+    std::string type(){
+      return "dummy";
+    }
+
   };
 
   template<typename... T>
