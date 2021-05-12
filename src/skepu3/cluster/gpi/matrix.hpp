@@ -896,6 +896,14 @@ namespace skepu{
       }
     }
 
+    // ******************************************************************
+    // All the function below are dummy functions for functionality which
+    // has not been implemented but needed to compile.
+    // ******************************************************************
+
+    T* getAddress(){
+      return (T*) cont_seg_ptr;
+    }
 
     T* begin(){
       return (T*) cont_seg_ptr;
