@@ -525,7 +525,7 @@ namespace skepu{
 
     if(i >= start_i && i <= end_i){
 
-      if(last_flush[rank] >= last_mod_op || last_flush[rank] == 0){
+      if(last_flush[rank] >= last_mod_op){
 
         // If we have flushed or if the container has never been modified before
         // we read from the container rather than buffer
