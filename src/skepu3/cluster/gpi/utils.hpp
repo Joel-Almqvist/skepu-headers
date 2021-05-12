@@ -13,8 +13,19 @@ namespace skepu{
 
   struct Index1D{
     size_t i;
+
     using is_skepu_index = std::true_type;
+    using is_skepu_1D_index = std::true_type;
   };
+
+  struct Index2D{
+    size_t row;
+    size_t col;
+
+    using is_skepu_index = std::true_type;
+    using is_skepu_2D_index = std::true_type;
+  };
+
 
 }
 

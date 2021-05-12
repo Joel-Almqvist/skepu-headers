@@ -18,6 +18,7 @@
 #include "utils.hpp"
 #include "container.hpp"
 
+
 namespace skepu{
   namespace _gpi{
     struct build_tup_util;
@@ -42,12 +43,10 @@ namespace skepu{
     template<typename TT>
     friend class Matrix;
 
-
     template<typename TT>
     friend class Vec;
 
     friend class _gpi::build_tup_util;
-
 
     template<int, typename TTup, typename TT>
     friend class _gpi::build_buff_helper;
@@ -70,10 +69,8 @@ namespace skepu{
     int norm_partition_size;
     long norm_partition_comm_offset;
 
-
     unsigned long last_mod_op;
     unsigned long* last_flush;
-
 
     // The OP number of the remote when its container was fetched
     std::atomic_ulong* comm_buffer_state;
@@ -83,6 +80,9 @@ namespace skepu{
     long start_i;
     long end_i;
 
+    size_t row;
+    size_t col;
+
     int get_owner(unsigned long index){
       if(index >= global_size){
         return -1;
@@ -90,6 +90,13 @@ namespace skepu{
       return std::min((int) std::floor(index / (double) norm_partition_size), nr_nodes - 1);
     }
 
+    size_t get_col(unsigned long index){
+      return index % row;
+    }
+
+    size_t get_row(unsigned long index){
+      return index / row;
+    }
 
 
     // Puts all of dest_cont's elements within the range in our
@@ -307,12 +314,12 @@ namespace skepu{
     void conditional_flush(){
 
       if(last_flush[rank] <= last_mod_op){
-        flush();
+        internal_flush();
       }
     }
 
     // Flush as long as there are the buffer is not garbage
-    void flush(){
+    void internal_flush(){
 
       bool empty_buff = last_flush[rank] == 0 && last_mod_op == 0;
 
@@ -618,17 +625,22 @@ namespace skepu{
       return this == &that;
     }
 
+    template<typename TT>
+    bool operator==(TT& that){
+      return false;
+    }
+
 
     Matrix(const Matrix&) = delete;
     Matrix& operator=(const Matrix&) = delete;
 
 
-    Matrix(int rows, int cols){
+    Matrix(size_t rows, size_t cols) : row{rows}, col{cols}{
       // Partition the matrix so that each rank receivs an even
       // amount of elements
-      int step = (rows * cols) / nr_nodes;
+      size_t step = (rows * cols) / nr_nodes;
       // The part which can not be evenly split
-      int residual = (rows * cols) % nr_nodes;
+      size_t residual = (rows * cols) % nr_nodes;
 
       if(rank != nr_nodes - 1){
         start_i = rank * step;
@@ -686,9 +698,13 @@ namespace skepu{
     };
 
 
-    Matrix(int rows, int cols, T init) : Matrix(rows, cols){
+    Matrix(size_t rows, size_t cols, T init) : Matrix(rows, cols){
       set(init);
     }
+
+    // NOTE This constructor is added to mimic the non implemented Vector class.
+    // When Vector is implemented this should be removed.
+    Matrix(size_t size) : Matrix(size, 1){}
 
     ~Matrix(){
       delete local_buffer;
@@ -820,7 +836,7 @@ namespace skepu{
 
       wait_for_constraints();
       //print_vclock();
-      flush();
+      internal_flush();
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
@@ -881,7 +897,24 @@ namespace skepu{
     }
 
 
-};
+    T* begin(){
+      return (T*) cont_seg_ptr;
+    }
+
+    T* end(){
+      return (T*) cont_seg_ptr + local_size - 1;
+    }
+
+    // Dummy function, see internal_flush for the real implementation
+    void flush(){};
+
+  };
+
+  // Dummy function
+  template<typename T>
+  std::ostream& operator<<(std::ostream& os, const Matrix<T>& matrix){
+    return os;
+  }
 
   template<typename T>
   struct is_skepu_container<skepu::Matrix<T>> : std::true_type {};

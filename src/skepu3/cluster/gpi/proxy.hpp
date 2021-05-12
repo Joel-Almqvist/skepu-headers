@@ -47,7 +47,7 @@ namespace skepu{
     Vec(){
     }
 
-    T operator[](const size_t i){
+    T operator[](const size_t i) const {
       return owner->proxy_get(i);
     }
   };

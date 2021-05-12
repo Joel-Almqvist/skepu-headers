@@ -162,11 +162,15 @@ namespace skepu{
         const bool case1 = std::is_same<arg_0_t, Index1D>::value &&
           sizeof...(args) == nr_args - 1;
 
-        const bool case2 = !std::is_same<arg_0_t, Index1D>::value &&
+        const bool case2 = std::is_same<arg_0_t, Index2D>::value &&
+          sizeof...(args) == nr_args - 1;
+
+
+        const bool case3 = !std::is_same<arg_0_t, Index1D>::value &&
+          !std::is_same<arg_0_t, Index2D>::value &&
           sizeof...(args) == nr_args;
 
-
-        static_assert(case1 || case2);
+        static_assert(case1 || case2 || case3);
 
         using T = typename DestCont::value_type;
 

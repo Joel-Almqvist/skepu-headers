@@ -35,13 +35,29 @@ namespace skepu{
         Dest& dest, Matrix<Curr>& curr, Rest&... rest)
         -> decltype(
           std::declval<
-            typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_index>(),
+            typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_1D_index>(),
         std::declval<void>())
       {
 
         std::get<tup_arg_ctr>(tup) = Index1D{i};
 
       }
+
+
+      // Index argument case
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
+      static auto build_tuple_helper(double sfinae_param, size_t i, Tup& tup,
+        Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+        -> decltype(
+          std::declval<
+            typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_2D_index>(),
+        std::declval<void>())
+      {
+
+        std::get<tup_arg_ctr>(tup) = Index2D{dest.get_row(i), dest.get_col(i)};
+
+      }
+
 
 
       // Scalar value from container case
@@ -88,6 +104,12 @@ namespace skepu{
 
     };
 
+
+    // This struct iterates two ways, once through the input arguments to map
+    // and once through the argument tuple to the embedded function itself.
+    //
+    // The specialization are needed since during an index arg we step once in
+    // the embedded function chain but not in the map arg chain.
     template<int tup_arg_ctr, typename T>
     struct helper{
 
@@ -124,6 +146,7 @@ namespace skepu{
         // skepu::Matrix for overload resoultion so send in dest twice.
         build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
 
+        // Reuse curr
         helper<1, int>::build_tuple( i, tup, dest, curr, rest...);
       }
 
@@ -134,9 +157,37 @@ namespace skepu{
         // Throw in dest as argument twice to help with SFINAE
         build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
       }
-
-
     };
+
+
+    // This is a copy of the case above, ugly solution but it works
+    template<>
+    struct helper<0, Index2D>{
+
+
+      // Traverses through the argument list and calls a helper for function on
+      // every argument.
+      template<typename Tup, typename Dest, typename Curr, typename... Rest>
+      static void build_tuple( size_t i, Tup& tup, Dest& dest,
+        Curr& curr, Rest&... rest)
+      {
+        // We won't use the curr argument in this call but we want another
+        // skepu::Matrix for overload resoultion so send in dest twice.
+        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+
+        // Reuse
+        helper<1, int>::build_tuple( i, tup, dest, curr, rest...);
+      }
+
+
+      template<typename Tup, typename Dest, typename... Rest>
+      static void build_tuple( size_t i, Tup& tup, Dest& dest)
+      {
+        // Throw in dest as argument twice to help with SFINAE
+        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+      }
+    };
+
 
 
     template <typename T, int ctr, bool done>

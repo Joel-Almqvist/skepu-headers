@@ -26,6 +26,7 @@
 #include "skepu3/cluster/gpi/map.hpp"
 #include "skepu3/cluster/gpi/reduce.hpp"
 #include "skepu3/impl/meta_helpers.hpp"
+#include "skepu3/cluster/gpi/dummies.hpp"
 
 #endif // SKEPU_GPI
 
