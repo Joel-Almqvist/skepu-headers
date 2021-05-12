@@ -896,12 +896,18 @@ namespace skepu{
       }
     }
 
+
+    bool single(){
+      return rank == 0;
+    }
+
     // ******************************************************************
     // All the function below are dummy functions for functionality which
     // has not been implemented but needed to compile.
     // ******************************************************************
 
     T* getAddress(){
+      internal_flush();
       return (T*) cont_seg_ptr;
     }
 
