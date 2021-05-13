@@ -39,6 +39,7 @@ float psnr(skepu::Matrix<int> &img, skepu::Matrix<int>& noise)
 	//auto squared_diff_sum = skepu::MapReduce(diff_squared, sum<float>);
 	skepu::Matrix<int> comp_img(rows, cols);
 
+	skepu::Matrix<float> swap_space(rows, cols);
 
 	auto diff_sqr = skepu::Map(diff_squared);
 	auto sum_float = skepu::Reduce(sum<float>);
@@ -46,8 +47,8 @@ float psnr(skepu::Matrix<int> &img, skepu::Matrix<int>& noise)
 	// Add noise
 	clamped_sum(comp_img, img, noise);
 
-	diff_sqr(img, img, noise);
-	float squared_diff_sum = sum_float(img);
+	diff_sqr(swap_space, img, noise);
+	float squared_diff_sum = sum_float(swap_space);
 
 
 //	std::cout << "Compressed image: " << comp_img << "\n";
