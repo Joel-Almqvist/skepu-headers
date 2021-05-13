@@ -838,6 +838,14 @@ namespace skepu{
       return global_size;
     }
 
+    size_t size_i(){
+      return row;
+    }
+
+    size_t size_j(){
+      return col;
+    }
+
 
     T operator[](const size_t index){
 
