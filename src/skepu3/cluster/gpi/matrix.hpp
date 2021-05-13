@@ -12,6 +12,8 @@
 #include <atomic>
 #include <climits>
 #include <omp.h>
+#include <random>
+
 
 #include <GASPI.h>
 
@@ -99,6 +101,13 @@ namespace skepu{
     }
 
 
+    void set(int index, T value){
+      if(index >= start_i && index <= end_i){
+        ((T*) cont_seg_ptr)[index - start_i] = value;
+      }
+    }
+
+
     // Puts all of dest_cont's elements within the range in our
     //communication buffer starting at offset local_offset.
     // Inclusive range, [start, end]
@@ -158,7 +167,6 @@ namespace skepu{
           // Reading our own vclock does nothing
           return;
         }
-
 
       auto res = gaspi_read_notify(
         0, // local seg
@@ -719,26 +727,55 @@ namespace skepu{
     }
 
 
-    // Randomly initializes an int or long matrix
-    void rand(int from, int to){
-      if(std::is_same<T, int>::value || std::is_same<T, long>::value){
-        for(int i = 0; i < local_size; i ++){
-          ((T*) cont_seg_ptr)[i] = from + std::rand() % (to - from);
-        }
+  private:
 
+    // Helps deduce whether we can cast the container's value type T and as
+    // such whether we can compile the randomize function or not.
+    template<typename TT, typename Cont, bool castable>
+    struct randomize_helper{
+      static void exec(Cont&, size_t, size_t){}
+    };
+
+
+    template<typename TT, typename Cont>
+    struct randomize_helper<TT, Cont, true>{
+      static void exec(Cont& cont, size_t from, size_t to){
+
+        cont.template randomize_helper_func<TT>(from, to);
       }
-      else{
-        std::cout << "Rand only supports matrices of int or long\n";
+    };
+
+
+    // Perfoms the actuall randomizing
+    template <typename TT>
+    void randomize_helper_func(size_t from, size_t to) {
+
+      static_assert(std::is_same<T, TT>::value);
+
+      wait_for_constraints();
+      conditional_flush();
+      last_mod_op = ++op_nr;
+
+      std::random_device rd{};
+      std::mt19937 generator{rd()};
+
+      uint32_t num;
+
+      T* lb = (T*) local_buffer;
+      for(int i = 0; i < 4+local_size; i++){
+        num = generator();
+        lb[i] = ((TT)num - generator.min())/(generator.max()-generator.min());
       }
+
+      op_nr++;
     }
 
+  public:
 
-
-    void set(int index, T value){
-      if(index >= start_i && index <= end_i){
-        ((T*) cont_seg_ptr)[index - start_i] = value;
-      }
-      //vclock[rank] = ++op_nr;
+    // Wrapper for randomize_helper_func
+    void randomize(size_t from, size_t to){
+      randomize_helper<T, decltype(*this), std::is_convertible<T,uint32_t>::value>
+      ::exec(*this, from, to);
     }
 
 
