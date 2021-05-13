@@ -19,6 +19,9 @@ namespace skepu{
 
     Reduce1D(ReduceFunc func) : func{func} {};
 
+    // Dummy
+    template<typename T>
+    void setBackend(T){};
 
     // If no initial value is given we use a default value
     template<typename Container>

@@ -41,6 +41,11 @@ namespace skepu{
     uses_random_access{has_random_access<Func_args...>()} {};
 
 
+    // Dummy
+    template<typename T>
+    void setBackend(T){};
+
+
   private:
     template<int ctr, typename Dest, typename Tup, typename Curr, typename... Rest>
     void build_tuple(int i, bool local_only, Dest& dest,
