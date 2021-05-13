@@ -731,24 +731,38 @@ namespace skepu{
 
     // Helps deduce whether we can cast the container's value type T and as
     // such whether we can compile the randomize function or not.
-    template<typename TT, typename Cont, bool castable>
+    //
+    // Only allows for randomizing of real and disccrete numbers
+    template<typename TT, typename Cont, bool real, bool discrete>
     struct randomize_helper{
-      static void exec(Cont&, size_t, size_t){}
+      template<typename Arg>
+      static void exec(Cont&, Arg, Arg){}
     };
 
 
     template<typename TT, typename Cont>
-    struct randomize_helper<TT, Cont, true>{
-      static void exec(Cont& cont, size_t from, size_t to){
+    struct randomize_helper<TT, Cont, true, false>{
+      template<typename Arg>
+      static void exec(Cont& cont, Arg from, Arg to){
 
-        cont.template randomize_helper_func<TT>(from, to);
+        cont.template randomize_helper_real<Arg, TT>(from, to);
+      }
+    };
+
+    template<typename TT, typename Cont>
+    struct randomize_helper<TT, Cont, false, true>{
+      template<typename Arg>
+      static void exec(Cont& cont, Arg from, Arg to){
+
+        cont.template randomize_helper_discrete<Arg, TT>(from, to);
       }
     };
 
 
-    // Perfoms the actuall randomizing
-    template <typename TT>
-    void randomize_helper_func(size_t from, size_t to) {
+
+    // Perfoms the actual randomizing
+    template <typename Arg, typename TT>
+    void randomize_helper_real(Arg from, Arg to) {
 
       static_assert(std::is_same<T, TT>::value);
 
@@ -756,25 +770,66 @@ namespace skepu{
       conditional_flush();
       last_mod_op = ++op_nr;
 
-      std::random_device rd{};
-      std::mt19937 generator{rd()};
+      std::uniform_real_distribution<TT> dis(from, to);
 
-      uint32_t num;
+      std::mt19937& generator = Environment::get_generator();
 
       T* lb = (T*) local_buffer;
-      for(int i = 0; i < 4+local_size; i++){
-        num = generator();
-        lb[i] = ((TT)num - generator.min())/(generator.max()-generator.min());
+      for(int i = 0; i < local_size; i++){
+        lb[i] = dis(generator);
       }
 
       op_nr++;
     }
 
+    // Perfoms the actual randomizing
+    template <typename Arg, typename TT>
+    void randomize_helper_discrete(Arg from, Arg to) {
+
+      static_assert(std::is_same<T, TT>::value);
+
+      wait_for_constraints();
+      conditional_flush();
+      last_mod_op = ++op_nr;
+
+
+      std::uniform_int_distribution<TT> dis(from, to);
+
+      std::mt19937& generator = Environment::get_generator();
+
+      T* lb = (T*) local_buffer;
+      for(int i = 0; i < local_size; i++){
+        lb[i] = dis(generator);
+      }
+
+      op_nr++;
+    }
+
+
   public:
 
     // Wrapper for randomize_helper_func
-    void randomize(size_t from, size_t to){
-      randomize_helper<T, decltype(*this), std::is_convertible<T,uint32_t>::value>
+    // Capture the arguments with template parameter as they may be real or
+    // discrete.
+    template<typename Arg>
+    void randomize(Arg from, Arg to){
+
+      const bool is_real =
+        std::is_same<T, float>::value ||
+        std::is_same<T, double>::value ||
+        std::is_same<T, long double>::value;
+
+      const bool is_discrete =
+        std::is_same<T, short>::value ||
+        std::is_same<T, int>::value ||
+        std::is_same<T, long >::value ||
+        std::is_same<T, long long>::value ||
+        std::is_same<T, unsigned short>::value ||
+        std::is_same<T, unsigned int>::value ||
+        std::is_same<T, unsigned long>::value ||
+        std::is_same<T, unsigned long long>::value;
+
+      randomize_helper<T, decltype(*this), is_real, is_discrete>
       ::exec(*this, from, to);
     }
 

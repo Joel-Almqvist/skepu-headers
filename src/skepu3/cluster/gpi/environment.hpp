@@ -3,6 +3,7 @@
 
 #include <GASPI.h>
 #include <cassert>
+#include <random>
 /*
 * This singleton scheme allows for better control of global state.
 * In particular it calls gaspi_init and terminate correctly.
@@ -12,6 +13,7 @@ class Environment
 private:
 
   ~Environment(){
+    delete generator;
     gaspi_proc_term(GASPI_BLOCK);
   };
 
@@ -20,6 +22,8 @@ private:
   bool init_called;
 
   inline static gaspi_pointer_t vclock_void;
+
+  inline static std::mt19937* generator;
 
 public:
   static Environment& get_instance(){
@@ -37,6 +41,9 @@ public:
     if(!init_called){
       gaspi_proc_init(GASPI_BLOCK);
       init_called = true;
+
+      //generator = new std::mt19937( time(NULL));
+
 
 
       gaspi_rank_t nr_nodes;
@@ -56,6 +63,15 @@ public:
 
     }
    };
+
+   static std::mt19937& get_generator(){
+     if(generator == nullptr){
+       generator = new std::mt19937(std::random_device{}() );
+     }
+     return *generator;
+   }
+
+
 };
 
 
