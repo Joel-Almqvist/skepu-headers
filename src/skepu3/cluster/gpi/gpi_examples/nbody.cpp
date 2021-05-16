@@ -164,15 +164,33 @@ int main(int argc, char *argv[])
 	const size_t iterations = std::stoul(argv[2]);
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[3])};
 
+	auto start = std::chrono::system_clock::now();
+
+
 	// Particle vectors....
 	skepu::Vector<Particle> particles(np);
 
 	nbody(particles, iterations, &spec);
+	particles.flush();
+
+	auto end = std::chrono::system_clock::now();
+	std::chrono::duration<double> elapsed_seconds = end - start;
+
+
+	double avg_rtime = particles.get_avg_time(elapsed_seconds.count());
+
+	std::cout << "Avg exec time = " << avg_rtime << ", my time = "
+	<< elapsed_seconds.count() << " np = " << np
+	<< ", iterations = " << iterations << std::endl;
+
+
+
+
+	/* NOTE: Code below are working prints to verify the result
 
 	std::stringstream outfile2;
 	outfile2 << "output" << spec.type() << ".txt";
 
-	particles.flush();
 	if(!skepu::cluster::mpi_rank()){
 		save_step(particles, outfile2.str());
 	}
@@ -203,6 +221,7 @@ int main(int argc, char *argv[])
 			return str;
 		});
 	}
+	*/
 
 	return 0;
 }

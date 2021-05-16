@@ -14,11 +14,14 @@
 #include <omp.h>
 #include <random>
 
-
 #include <GASPI.h>
 
 #include "utils.hpp"
 #include "container.hpp"
+
+// NOTE This included is only used for get_avg_time() and should
+// eventually be removed.
+#include "reduce.hpp"
 
 
 namespace skepu{
@@ -1000,6 +1003,33 @@ namespace skepu{
     bool single(){
       return rank == 0;
     }
+
+
+    int get_rank(){
+      return rank;
+    }
+
+    int get_nodes(){
+      return nr_nodes;
+    }
+
+    // NOTE This function is only used for benchmarking and is itself very slow
+    double get_avg_time(double delta){
+
+      skepu::Matrix<double> helper(nr_nodes);
+
+      helper.set(rank, delta / nr_nodes);
+
+      auto plus = skepu::Reduce([](double a, double b){
+        return a + b;
+      });
+
+      gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+
+      return plus(helper);
+
+    }
+
 
     // ******************************************************************
     // All the function below are dummy functions for functionality which
