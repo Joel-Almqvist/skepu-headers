@@ -173,16 +173,15 @@ int main(int argc, char *argv[])
 	nbody(particles, iterations, &spec);
 	particles.flush();
 
+
 	auto end = std::chrono::system_clock::now();
-	std::chrono::duration<double> elapsed_seconds = end - start;
+	double rtime = std::chrono::duration<double>{end - start}.count();
 
+	double slowest_rtime = particles.get_slowest_node(rtime);
+	double avg_rtime = particles.get_avg_time(rtime);
 
-	double avg_rtime = particles.get_avg_time(elapsed_seconds.count());
-
-	std::cout << "Avg exec time = " << avg_rtime << ", my time = "
-	<< elapsed_seconds.count() << " np = " << np
-	<< ", iterations = " << iterations << std::endl;
-
+	printf("Slowest = %f, Avg time = %f, my time = %f, size = %lu\n",
+	slowest_rtime, avg_rtime, rtime, np);
 
 
 

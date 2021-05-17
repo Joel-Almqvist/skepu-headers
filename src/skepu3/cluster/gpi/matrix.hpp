@@ -1031,6 +1031,24 @@ namespace skepu{
     }
 
 
+    // NOTE This function is only used for benchmarking and is itself very slow
+    double get_slowest_node(double delta){
+
+      skepu::Matrix<double> helper(nr_nodes);
+
+      helper.set(rank, delta);
+
+      auto max = skepu::Reduce([](double a, double b){
+        return a > b ? a : b;
+      });
+
+      gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+
+      return max(helper);
+
+    }
+
+
     // ******************************************************************
     // All the function below are dummy functions for functionality which
     // has not been implemented but needed to compile.

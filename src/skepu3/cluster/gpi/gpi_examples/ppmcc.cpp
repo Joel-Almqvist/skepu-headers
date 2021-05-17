@@ -83,6 +83,8 @@ int main(int argc, char *argv[])
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[2])};
 	skepu::setGlobalBackendSpec(spec);
 
+	auto start = std::chrono::system_clock::now();
+
 	// Vector operands
 	skepu::Vector<T> x(size), y(size);
 	x.randomize(1, 3);
@@ -99,7 +101,16 @@ int main(int argc, char *argv[])
 
 	T res = ppmcc(x, y);
 
-	std::cout << "res: " << res << std::endl;
+
+	auto end = std::chrono::system_clock::now();
+	double rtime = std::chrono::duration<double>{end - start}.count();
+
+	double slowest_rtime = x.get_slowest_node(rtime);
+	double avg_rtime = x.get_avg_time(rtime);
+
+	printf("Slowest = %f, Avg time = %f, my time = %f, size = %lu, res = %f\n",
+	slowest_rtime, avg_rtime, rtime, size, res);
+
 
 	/*
 	skepu::external([&]{
