@@ -73,6 +73,8 @@ int main(int argc, char *argv[])
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[3])};
 	skepu::setGlobalBackendSpec(spec);
 
+	auto start = std::chrono::system_clock::now();
+
 	skepu::Matrix<int> img(rows, cols), noise(rows, cols);
 
 	// Generate random image and random noise
@@ -89,7 +91,19 @@ int main(int argc, char *argv[])
 
 	float psnrval = psnr(img, noise);
 
-	std::cout << "psnr = " << psnrval << std::endl;
+
+	auto end = std::chrono::system_clock::now();
+	double rtime = std::chrono::duration<double>{end - start}.count();
+
+	double slowest_rtime = img.get_slowest_node(rtime);
+	double avg_rtime = img.get_avg_time(rtime);
+
+	printf("Slowest = %f, Avg time = %f, my time = %f, rows = %lu, cols = %lu"
+		" psnr = %f\n",
+	slowest_rtime, avg_rtime, rtime, rows, cols, psnrval);
+
+
+	//std::cout << "psnr = " << psnrval << std::endl;
 
 	/*
 	skepu::external([&]{

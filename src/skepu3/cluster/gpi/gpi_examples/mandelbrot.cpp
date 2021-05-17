@@ -111,13 +111,29 @@ int main(int argc, char* argv[])
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[3])};
 	skepu::setGlobalBackendSpec(spec);
 
+	auto start = std::chrono::system_clock::now();
+
 	skepu::Matrix<size_t> iterations(height, width);
 
 	auto mandelbroter = skepu::Map<0>(mandelbrot_f);
 	mandelbroter(iterations, height, width);
 	iterations.flush();
 
+
+	auto end = std::chrono::system_clock::now();
+	double rtime = std::chrono::duration<double>{end - start}.count();
+
+	double slowest_rtime = iterations.get_slowest_node(rtime);
+	double avg_rtime = iterations.get_avg_time(rtime);
+
+	printf("Slowest = %f, Avg time = %f, my time = %f, width = %lu, height = %lu\n",
+		slowest_rtime, avg_rtime, rtime, width, height);
+
+
+
 	//if(!skepu::cluster::mpi_rank())
-	if(iterations.single())
-		save_image(width, height, iterations.getAddress(), MAX_ITERS);
+	//if(iterations.single())
+	//	save_image(width, height, iterations.getAddress(), MAX_ITERS);
+
+
 }
