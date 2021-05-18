@@ -933,12 +933,9 @@ namespace skepu{
 
     // WARNING Only use this for debugging, it has very poor performance
     void print(){
-      gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
       op_nr++;
-
       wait_for_constraints();
-      //print_vclock();
       internal_flush();
 
       for(int i = 0; i < nr_nodes; i++){
@@ -982,6 +979,11 @@ namespace skepu{
 
     template<typename Lambda>
     void print(Lambda lamb){
+
+      op_nr++;
+      wait_for_constraints();
+      internal_flush();
+
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
           for(int j = 0; j < local_size; j++){
