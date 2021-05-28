@@ -37,14 +37,17 @@ namespace skepu{
 
       static_assert(std::is_same<T, Val>::value);
 
-      cont.wait_for_constraints();
-
       cont.op_nr++;
       cont.vclock[cont.rank] = cont.op_nr;
 
-
+      // We either read from the double buffer or the actual segment depending
+      // on flush status. We do not flush.
       T* from;
-      if(cont.last_flush[cont.rank] >= cont.last_mod_op){
+
+      bool has_flushed = cont.last_flush[cont.rank] > cont.last_mod_op
+        || cont.last_mod_op == 0;
+
+      if(has_flushed){
         from = (T*) cont.cont_seg_ptr;
       }
       else{
