@@ -16,7 +16,8 @@
 
 #include "matrix.hpp"
 #include "utils.hpp"
-#include "proxy.hpp"
+#include "proxy_vec.hpp"
+#include "proxy_mat.hpp"
 #include "build_tup.hpp"
 
 

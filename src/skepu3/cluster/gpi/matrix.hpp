@@ -51,6 +51,9 @@ namespace skepu{
     template<typename TT>
     friend class Vec;
 
+    template<typename TT>
+    friend class Mat;
+
     friend class _gpi::build_tup_util;
 
     template<int, typename TTup, typename TT>

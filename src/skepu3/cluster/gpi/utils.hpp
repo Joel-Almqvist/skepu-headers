@@ -26,96 +26,10 @@ namespace skepu{
     using is_skepu_2D_index = std::true_type;
   };
 
-
 }
 
 
 namespace skepu::_gpi{
-
-  // Returns a tuple type containing N copies of T
-  // Credits for these structs goes to rahnema1 from Stackoverflow
-
-  // Usage:
-  // tuple_of<3, int> tup = make_tuple(1,1,1);
-  template <size_t N,typename T>
-  struct tuple_n{
-      template< typename...Args>
-  		using type = typename tuple_n<N-1, T>::template type<T, Args...>;
-  };
-
-  template <typename T>
-  struct tuple_n<0, T> {
-      template<typename...Args>
-  		using type = std::tuple<Args...>;
-  };
-
-  template <size_t N,typename T>
-  using tuple_of = typename tuple_n<N, T>::template type<>;
-
-
-
-  // The dummy is used to allow compile time evaluation of the
-  // bool
-  template <int ctr, bool done>
-  struct dummy;
-
-  template <int ctr>
-  struct dummy<ctr, true> {
-
-      template <typename Func, typename...Args, typename... Exp>
-      static auto exec(Func func, std::tuple<Args...>& tup, Exp&... exp)
-      -> typename std::remove_reference<decltype(std::get<0>(tup))>::type
-       {
-
-        const bool not_done = ctr < sizeof...(Args) - 1;
-        dummy<ctr + 1, not_done>::exec(func, tup, exp..., std::get<ctr>(tup));
-      }
-  };
-
-  template <int ctr>
-  struct dummy<ctr, false> {
-
-      template<typename Func, typename Tup, typename...Exp>
-      static auto exec(Func func, Tup& tup, Exp&... exp)
-      -> typename std::remove_reference<decltype(std::get<0>(tup))>::type
-      {
-        return func(exp...);
-        }
-  };
-
-/* Should be struct based for compile time usage
-  template<typename First, typename... Rest>
-  bool is_skepu(First& first, Rest&... rest){
-    return First::is_skepu_container && is_skepu(rest...);
-  }
-
-  template<typename Last>
-  bool is_skepu(Last& last){
-    return Last::is_skepu_container;
-  }
-*/
-
-
-// **********************
-template<typename T>
-auto get_val_t(int) -> decltype(
-  std::declval<typename T::is_skepu_container>(),
-  (typename T::value_type){}
-  ) {
-  return (typename T::value_type){};
-}
-
-template<typename T>
-T get_val_t(double){
-  return T{};
-}
-
-template<typename T>
-struct get_skepu_val_t{
-  //using type = decltype(std::declval<get_val_t<T>(0)>());
-  using type = decltype(get_val_t<T>(int{}));
-};
-// ***************************
 
 template<typename T>
 auto is_skepu_helper(int) -> decltype(
@@ -131,11 +45,8 @@ std::false_type is_skepu_helper(double){
 
 template<typename T>
 struct is_skepu{
-  //using type = decltype(std::declval<get_val_t<T>(0)>());
   using type = decltype(is_skepu_helper<T>(int{}));
 };
-
-// ******************************
 
 
 
@@ -163,7 +74,7 @@ struct function_argument_type< ftor, n,
 // endof Potatoswatter's code
 
 
-// Given a lambda Func with n + 1 arguments create a tuple type
+// Given a lambda or functor with n + 1 arguments create a tuple type
 // containing the arguments.
 template<typename Func, int n, typename ... Rest>
 struct get_tup_t{
@@ -179,7 +90,6 @@ struct get_tup_t{
     using type = std::tuple<typename function_argument_type<Func, 0 >::type,
       Rest...>;
   };
-
 }
 
 

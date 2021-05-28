@@ -5,14 +5,9 @@
 #include "matrix.hpp"
 
 
-/* This file contains help functions for Map.
-*/
-
-struct Particle;
 
 namespace skepu{
   namespace _gpi{
-
 
     struct build_tup_util{
 
@@ -21,21 +16,32 @@ namespace skepu{
       static auto build_tuple_helper(Vec<Curr> sfinae, size_t i, Tup& tup,
         Dest& dest, Matrix<Curr>& curr)
         -> decltype(
-          //std::declval<
-          //  typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_proxy_type>(),
         std::declval<void>())
       {
 
         std::get<tup_arg_ctr>(tup) = std::move(Vec<Curr>(curr));
       }
 
+
+      // Random access iterator type case
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
+      static auto build_tuple_helper(Mat<Curr> sfinae, size_t i, Tup& tup,
+        Dest& dest, Matrix<Curr>& curr)
+        -> decltype(
+        std::declval<void>())
+      {
+
+        std::get<tup_arg_ctr>(tup) = std::move(Mat<Curr>(curr));
+      }
+
+
+
+
       // Index argument case
       template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
       static auto build_tuple_helper(Index1D sfinae_param, size_t i, Tup& tup,
         Dest& dest, Matrix<Curr>& curr)
         -> decltype(
-          //std::declval<
-          //  typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_1D_index>(),
         std::declval<void>())
       {
 
@@ -49,8 +55,6 @@ namespace skepu{
       static auto build_tuple_helper(Index2D sfinae_param, size_t i, Tup& tup,
         Dest& dest, Matrix<Curr>& curr)
         -> decltype(
-          //std::declval<
-          //  typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_2D_index>(),
         std::declval<void>())
       {
 
