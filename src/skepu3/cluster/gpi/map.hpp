@@ -1,5 +1,5 @@
 #ifndef MAP_HPP
-#define AMP_HPP
+#define MAP_HPP
 
 #include <type_traits>
 #include <numeric>
@@ -34,12 +34,27 @@ namespace skepu{
 
     const bool uses_random_access;
 
+    // Indicate whether to add constraints after a Map or not. Used by MapReduce
+    bool no_constraints;
+
     using arg_tup_t = typename std::tuple<Func_args...>;
 
 
+  protected:
+    // This constructor lets MapReduce set the no_constraints flag
+
+    Map1D(std::function<Ret(Func_args...)> func, bool ignore_constraints):
+     func{func},
+     uses_random_access{has_random_access<Func_args...>()},
+     no_constraints{ignore_constraints}
+     {};
+
   public:
-    Map1D(std::function<Ret(Func_args...)> func) : func{func},
-    uses_random_access{has_random_access<Func_args...>()} {};
+    Map1D(std::function<Ret(Func_args...)> func) :
+    func{func},
+    uses_random_access{has_random_access<Func_args...>()},
+    no_constraints{false}
+    {};
 
 
     // Dummy
@@ -213,6 +228,13 @@ namespace skepu{
             _gpi::apply_helper<T, 0, true>::exec(
               dest.local_buffer + i - dest.start_i, func, tup);
           }
+        }
+
+        // If Map is called within a MapReduce we not not motify the container
+        // and as such do not need constraints.
+        if(no_constraints){
+            dest.vclock[dest.rank] = ++dest.op_nr;
+            return;
         }
 
         dest.last_mod_op = dest.op_nr;

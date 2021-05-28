@@ -41,10 +41,16 @@ namespace skepu{
     // and in all other containers. This is an ad hoc solution due to being a demo
     template<typename TT>
     friend class Reduce1D;
+
     template<int, typename Ret, typename... Func_args>
     friend class Map1D;
+
+    template<int Arity, typename red_f_t, typename map_ret_t, typename... map_args>
+    friend class MapReduce1D;
+
     template<typename TT>
     friend class FilterClass;
+
     template<typename TT>
     friend class Matrix;
 

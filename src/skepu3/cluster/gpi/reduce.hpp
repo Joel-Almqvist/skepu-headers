@@ -15,9 +15,16 @@ namespace skepu{
   class Reduce1D{
   private:
     ReduceFunc func;
+    bool always_use_buffer;
+
+  protected:
+
+    // Constructor used by MapReduce
+    Reduce1D(ReduceFunc func, bool flag) : func{func}, always_use_buffer{flag} {};
+
   public:
 
-    Reduce1D(ReduceFunc func) : func{func} {};
+    Reduce1D(ReduceFunc func) : func{func}, always_use_buffer{false} {};
 
     // Dummy
     template<typename T>
@@ -47,7 +54,7 @@ namespace skepu{
       bool has_flushed = cont.last_flush[cont.rank] > cont.last_mod_op
         || cont.last_mod_op == 0;
 
-      if(has_flushed){
+      if(has_flushed && !always_use_buffer){
         from = (T*) cont.cont_seg_ptr;
       }
       else{
