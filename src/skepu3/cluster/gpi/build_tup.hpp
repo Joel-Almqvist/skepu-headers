@@ -17,12 +17,12 @@ namespace skepu{
     struct build_tup_util{
 
       // Random access iterator type case
-      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-      static auto build_tuple_helper(double sfinae_param, size_t i, Tup& tup,
-        Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
+      static auto build_tuple_helper(Vec<Curr> sfinae, size_t i, Tup& tup,
+        Dest& dest, Matrix<Curr>& curr)
         -> decltype(
-          std::declval<
-            typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_proxy_type>(),
+          //std::declval<
+          //  typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_proxy_type>(),
         std::declval<void>())
       {
 
@@ -30,12 +30,12 @@ namespace skepu{
       }
 
       // Index argument case
-      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-      static auto build_tuple_helper(double sfinae_param, size_t i, Tup& tup,
-        Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
+      static auto build_tuple_helper(Index1D sfinae_param, size_t i, Tup& tup,
+        Dest& dest, Matrix<Curr>& curr)
         -> decltype(
-          std::declval<
-            typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_1D_index>(),
+          //std::declval<
+          //  typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_1D_index>(),
         std::declval<void>())
       {
 
@@ -45,12 +45,12 @@ namespace skepu{
 
 
       // Index argument case
-      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-      static auto build_tuple_helper(double sfinae_param, size_t i, Tup& tup,
-        Dest& dest, Matrix<Curr>& curr, Rest&... rest)
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
+      static auto build_tuple_helper(Index2D sfinae_param, size_t i, Tup& tup,
+        Dest& dest, Matrix<Curr>& curr)
         -> decltype(
-          std::declval<
-            typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_2D_index>(),
+          //std::declval<
+          //  typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type::is_skepu_2D_index>(),
         std::declval<void>())
       {
 
@@ -61,9 +61,9 @@ namespace skepu{
 
 
       // Scalar value from container case
-      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr, typename... Rest>
-      static auto build_tuple_helper(int sfinae_param, size_t i, Tup& tup,
-        Dest& dest, Matrix<Curr>& curr, Rest&... rest) -> decltype(std::declval<void>())
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
+      static auto build_tuple_helper(typename Matrix<Curr>::value_type sfinae_param, size_t i, Tup& tup,
+        Dest& dest, Matrix<Curr>& curr) -> decltype(std::declval<void>())
       {
         using T = typename Matrix<Curr>::value_type;
 
@@ -94,8 +94,8 @@ namespace skepu{
       }
 
       // Constant value case
-      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr_scalar>
-      static void build_tuple_helper(int sfinae_param, size_t i, Tup& tup, Dest& dest, Curr_scalar& curr)
+      template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr_scalar, typename SFINAE>
+      static void build_tuple_helper(SFINAE sfinae_param, size_t i, Tup& tup, Dest& dest, Curr_scalar& curr)
       {
         std::get<tup_arg_ctr>(tup) = curr;
       }
@@ -119,14 +119,23 @@ namespace skepu{
       static void build_tuple( size_t i, Tup& tup, Dest& dest,
         Curr& curr, Rest&... rest)
       {
-        build_tup_util::build_tuple_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
+
+        using curr_arg_t = typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type;
+
+
+        build_tup_util::build_tuple_helper<tup_arg_ctr>(curr_arg_t{}, i, tup, dest, curr);
+
+
         helper<tup_arg_ctr + 1, T>::build_tuple( i, tup, dest, rest...);
       }
 
       template<typename Tup, typename Dest, typename Curr>
       static void build_tuple( size_t i, Tup& tup, Dest& dest, Curr& curr)
       {
-        build_tup_util::build_tuple_helper<tup_arg_ctr>(double{}, i, tup, dest, curr);
+
+        using curr_arg_t = typename std::remove_reference<decltype(std::get<tup_arg_ctr>(tup))>::type;
+
+        build_tup_util::build_tuple_helper<tup_arg_ctr>(curr_arg_t{}, i, tup, dest, curr);
       }
 
 
@@ -142,9 +151,13 @@ namespace skepu{
       static void build_tuple( size_t i, Tup& tup, Dest& dest,
         Curr& curr, Rest&... rest)
       {
+
+        using curr_arg_t = typename std::remove_reference<decltype(std::get<0>(tup))>::type;
+
+
         // We won't use the curr argument in this call but we want another
         // skepu::Matrix for overload resoultion so send in dest twice.
-        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+        build_tup_util::build_tuple_helper<0>(curr_arg_t{}, i, tup, dest, dest);
 
         // Reuse curr
         helper<1, int>::build_tuple( i, tup, dest, curr, rest...);
@@ -154,8 +167,10 @@ namespace skepu{
       template<typename Tup, typename Dest, typename... Rest>
       static void build_tuple( size_t i, Tup& tup, Dest& dest)
       {
+        using curr_arg_t = typename std::remove_reference<decltype(std::get<0>(tup))>::type;
+
         // Throw in dest as argument twice to help with SFINAE
-        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+        build_tup_util::build_tuple_helper<0>(curr_arg_t{}, i, tup, dest, dest);
       }
     };
 
@@ -171,20 +186,26 @@ namespace skepu{
       static void build_tuple( size_t i, Tup& tup, Dest& dest,
         Curr& curr, Rest&... rest)
       {
+
+        using curr_arg_t = typename std::remove_reference<decltype(std::get<0>(tup))>::type;
+
         // We won't use the curr argument in this call but we want another
         // skepu::Matrix for overload resoultion so send in dest twice.
-        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+        build_tup_util::build_tuple_helper<0>(curr_arg_t{}, i, tup, dest, dest);
 
         // Reuse
         helper<1, int>::build_tuple( i, tup, dest, curr, rest...);
       }
 
 
-      template<typename Tup, typename Dest, typename... Rest>
+      template<typename Tup, typename Dest>
       static void build_tuple( size_t i, Tup& tup, Dest& dest)
       {
+
+        using curr_arg_t = typename std::remove_reference<decltype(std::get<0>(tup))>::type;
+
         // Throw in dest as argument twice to help with SFINAE
-        build_tup_util::build_tuple_helper<0>(double{}, i, tup, dest, dest);
+        build_tup_util::build_tuple_helper<0>(curr_arg_t{}, i, tup, dest, dest);
       }
     };
 
