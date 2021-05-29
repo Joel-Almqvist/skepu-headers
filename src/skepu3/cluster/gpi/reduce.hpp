@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <numeric>
 #include <cmath>
+#include <functional>
 
 #include <GASPI.h>
 
@@ -11,38 +12,47 @@
 
 namespace skepu{
 
-  template<typename ReduceFunc>
+  template<typename ret_t, typename arg_t>
   class Reduce1D{
   private:
-    ReduceFunc func;
+    std::function<ret_t(arg_t, arg_t)> func;
     bool always_use_buffer;
+
+    ret_t start_value;
 
   protected:
 
     // Constructor used by MapReduce
-    Reduce1D(ReduceFunc func, bool flag) : func{func}, always_use_buffer{flag} {};
+    Reduce1D(std::function<ret_t(arg_t, arg_t)> func, bool flag) : func{func},
+     always_use_buffer{flag}, start_value{} {};
 
   public:
 
-    Reduce1D(ReduceFunc func) : func{func}, always_use_buffer{false} {};
+    Reduce1D(std::function<ret_t(arg_t, arg_t)> func) : func{func},
+      always_use_buffer{false}, start_value{} {
+
+      //using T = typename _gpi::get_tup_t<ReduceFunc, 2>::type;
+      // TODO do something else
+      //using TT = func()
+
+    };
+
+    void setStartValue(ret_t val){
+      start_value = val;
+    }
+
 
     // Dummy
     template<typename T>
     void setBackend(T){};
 
-    // If no initial value is given we use a default value
+
+
     template<typename Container>
     typename Container::value_type operator()(Container& cont){
       using T = typename Container::value_type;
-      return operator()(cont, T{});
-    }
 
-
-    template<typename Container, typename Val>
-    typename Container::value_type operator()(Container& cont, Val init){
-      using T = typename Container::value_type;
-
-      static_assert(std::is_same<T, Val>::value);
+      static_assert(std::is_same<T, ret_t>::value);
 
       cont.op_nr++;
       cont.vclock[cont.rank] = cont.op_nr;
@@ -85,7 +95,7 @@ namespace skepu{
         if(cont.rank == 0){
           #pragma omp single
           {
-            to = func(to, init);
+            to = func(to, start_value);
           }
         }
 
@@ -212,12 +222,24 @@ namespace skepu{
   };
 
 
-  // Template deduction for classes are not allowed in c++11
-  // This solves this problem
-  template<typename ReduceFunc>
-  Reduce1D<ReduceFunc> Reduce(ReduceFunc func){
-    return Reduce1D<ReduceFunc>{func};
+  // The constructor wrapper for function pointers
+  template <typename Ret, typename arg_t>
+  Reduce1D<Ret, arg_t> Reduce(Ret(*arg)(arg_t, arg_t)){
+      return Reduce1D<Ret, arg_t>((std::function<Ret(arg_t, arg_t)>)arg);
   }
+
+  template <typename Ret, typename arg_t>
+  Reduce1D<Ret, arg_t> _red_helper(std::function<Ret(arg_t, arg_t)> func){
+    return Reduce1D<Ret, arg_t>(func);
+  }
+
+
+  template <typename Lambda>
+  auto Reduce(Lambda&& lambda) -> decltype(_red_helper(lambda_cast(lambda))){
+
+    return _red_helper(lambda_cast(lambda));
+  }
+
 
 } // end of namespace skepu
 #endif // REDUCE_HPP

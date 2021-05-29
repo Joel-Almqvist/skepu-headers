@@ -310,8 +310,8 @@ namespace skepu{
 
   // Helper for the lambda and functor constructor wrapper
   template <int Arity = -1, typename Ret, typename... Args>
-  Map1D<Arity, Ret, Args...> _map_helper(std::function<Ret(Args...)> map_arg){
-    return Map1D<Arity, Ret, Args...>(map_arg);
+  Map1D<Arity, Ret, Args...> _map_helper(std::function<Ret(Args...)> func){
+    return Map1D<Arity, Ret, Args...>(func);
   }
 
 

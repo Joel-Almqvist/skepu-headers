@@ -39,7 +39,7 @@ namespace skepu{
 
     // All skeletons must be added as friend classes here
     // and in all other containers. This is an ad hoc solution due to being a demo
-    template<typename TT>
+    template<typename ret_t, typename arg_t>
     friend class Reduce1D;
 
     template<int, typename Ret, typename... Func_args>
