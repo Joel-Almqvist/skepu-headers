@@ -1035,8 +1035,6 @@ namespace skepu{
         return a + b;
       });
 
-      gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
-
       return plus(helper);
 
     }
@@ -1053,7 +1051,6 @@ namespace skepu{
         return a > b ? a : b;
       });
 
-      gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
 
       return max(helper);
 
