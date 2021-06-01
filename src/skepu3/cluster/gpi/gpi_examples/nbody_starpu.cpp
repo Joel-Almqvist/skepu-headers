@@ -38,6 +38,11 @@ Particle move(skepu::Index1D index, Particle pi, const skepu::Vec<Particle> parr
 		{
 			Particle pj = parr[j];
 
+			if(pj.x == 0){
+				//printf("x is 0 at %lu\n", i);
+			}
+
+
 			float rij = sqrt((pi.x - pj.x) * (pi.x - pj.x)
 			               + (pi.y - pj.y) * (pi.y - pj.y)
 			               + (pi.z - pj.z) * (pi.z - pj.z));
@@ -144,6 +149,10 @@ void nbody(skepu::Vector<Particle> &particles, size_t iterations, skepu::Backend
 	// particle vectors initialization
 	nbody_init(particles, np);
 
+
+
+
+
 	for (size_t i = 0; i < iterations; i += 2)
 	{
 		nbody_simulate_step(doublebuffer, particles, particles);
@@ -177,16 +186,11 @@ int main(int argc, char *argv[])
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
-	double slowest_rtime = particles.get_slowest_node(rtime);
-	double avg_rtime = particles.get_avg_time(rtime);
+	printf("My time = %f, size = %lu\n",
+	 rtime, np);
 
-	printf("Slowest = %f, Avg time = %f, my time = %f, size = %lu\n",
-	slowest_rtime, avg_rtime, rtime, np);
-
-
-
-	/* NOTE: Code below are working prints to verify the result
-
+	// NOTE: Code below are working prints to verify the result
+	/*
 	std::stringstream outfile2;
 	outfile2 << "output" << spec.type() << ".txt";
 
@@ -199,7 +203,7 @@ int main(int argc, char *argv[])
 			std::string str{};
 
 			str += "x = ";
-			str += std::to_string(p.x).substr(0,6);
+			str += std::to_string(p.x).substr(0,8);
 
 			str += ", y = ";
 			str += std::to_string(p.y).substr(0,6);
@@ -208,7 +212,7 @@ int main(int argc, char *argv[])
 			str += std::to_string(p.z).substr(0,6);
 
 			str += ", vx = ";
-			str += std::to_string(p.vx).substr(0,6);
+			str += std::to_string(p.vx).substr(0,8);
 
 			str += ", vy = ";
 			str += std::to_string(p.vy).substr(0,6);
