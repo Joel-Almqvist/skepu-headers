@@ -31,23 +31,66 @@ namespace skepu{
     Matrix<T>* owner;
 
 
-    Mat(Matrix<T>& own){
-      owner = &own;
-      size = owner->global_size;
-    }
+    Mat(Matrix<T>& own) :
+      cols_helper{own.col},
+      rows_helper{own.row},
+      size_helper{own.global_size},
+      cols{cols_helper},
+      rows{rows_helper},
+      size{size_helper},
+      owner{&own} {}
 
+
+    size_t cols_helper;
+    size_t rows_helper;
+    size_t size_helper;
 
   public:
     using is_proxy_type = std::true_type;
 
-    size_t size;
+    // The user may only access non readable values
+    const size_t& size;
+    const size_t& cols;
+    const size_t& rows;
 
     // Is public to allow for bracket initialization used when creating
     // the arguments tuple in map
-    Mat(){}
+    Mat() :
+    cols_helper{},
+    rows_helper{},
+    size_helper{},
+    cols{cols_helper},
+    rows{rows_helper},
+    size{size_helper},
+    owner{nullptr} {}
 
+
+    Mat(const Mat& that) :
+      cols_helper{that.cols_helper},
+      rows_helper{that.rows_helper},
+      size_helper{that.size_helper},
+      cols{cols_helper},
+      rows{rows_helper},
+      size{size_helper},
+      owner{that.owner} {}
+
+    Mat<T>& operator=(const Mat<T>&& that){
+      owner = that.owner;
+      size_helper = that.size_helper;
+      cols_helper = that.cols_helper;
+      rows_helper = that.rows_helper;
+
+      return *this;
+    }
+
+    // 2D accessing pattern
     T operator()(const size_t row, const size_t col) const {
       return owner->proxy_get(row * owner->col + col);
+    }
+
+    // 1D accessing pattern
+    T operator[](const size_t i) const {
+      return owner->proxy_get(i);
     }
 
 

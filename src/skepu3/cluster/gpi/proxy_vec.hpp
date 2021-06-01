@@ -31,21 +31,38 @@ namespace skepu{
     Matrix<T>* owner;
 
 
-    Vec(Matrix<T>& own){
-      owner = &own;
-      size = owner->global_size;
-    }
+    Vec(Matrix<T>& own) :
+      size_helper{own.global_size},
+      size{size_helper},
+      owner{&own} {}
+
+    size_t size_helper;
 
 
   public:
     using is_proxy_type = std::true_type;
 
-    size_t size;
+    const size_t& size;
 
     // Is public to allow for bracket initialization used when creating
     // the arguments tuple in map
-    Vec(){
+    Vec() :
+    size_helper{},
+    size{size_helper},
+    owner{nullptr}{}
+
+
+    Vec(const Vec& that) :
+      size_helper{that.size_helper},
+      size{size_helper},
+      owner{that.owner} {}
+
+    Vec<T>& operator=(const Vec<T>&& that){
+      owner = that.owner;
+      size_helper = that.size_helper;
+      return *this;
     }
+
 
     T operator[](const size_t i) const {
       return owner->proxy_get(i);

@@ -71,7 +71,7 @@ namespace skepu{
     T* local_buffer;
 
     int local_size;
-    long global_size;
+    size_t global_size;
 
     unsigned long comm_offset;
     unsigned long comm_size;
