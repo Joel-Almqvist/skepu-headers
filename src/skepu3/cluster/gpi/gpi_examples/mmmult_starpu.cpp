@@ -7,7 +7,7 @@ T mmmult_f(skepu::Index2D idx, const skepu::Mat<T> lhs, const skepu::Mat<T> rhs)
 {
 	T res = 0;
 	for (size_t i = 0; i < lhs.cols; ++i)
-		res += lhs[idx.row * lhs.cols + i] * rhs[i * rhs.cols + idx.col];
+		res += lhs.data[idx.row * lhs.cols + i] * rhs.data[i * rhs.cols + idx.col];
 	return res;
 }
 
