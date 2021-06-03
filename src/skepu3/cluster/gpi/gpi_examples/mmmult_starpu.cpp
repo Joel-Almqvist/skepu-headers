@@ -1,5 +1,6 @@
 #include <iostream>
 #include <skepu>
+#include <fstream>
 
 
 template<typename T>

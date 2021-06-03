@@ -4,6 +4,7 @@
 #line 1 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mmmult_starpu.cpp"
 #include <iostream>
 #include <skepu>
+#include <fstream>
 
 
 template<typename T>
@@ -69,7 +70,7 @@ static inline SKEPU_ATTRIBUTE_FORCE_INLINE float CPU(skepu::Index2D idx, const s
 #undef SKEPU_USING_BACKEND_CPU
 };
 
-#line 16 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mmmult_starpu.cpp"
+#line 17 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mmmult_starpu.cpp"
 int main(int argc, char *argv[])
 {
 	if (argc < 5)
