@@ -15,10 +15,10 @@ T mmmult_f(skepu::Index2D idx, const skepu::Mat<T> lhs, const skepu::Mat<T> rhs)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 4)
+	if (argc < 5)
 	{
 		if(!skepu::cluster::mpi_rank())
-			std::cout << "Usage: " << argv[0] << " height width inner backend\n";
+			std::cout << "Usage: " << argv[0] << " height width inner backend path\n";
 		exit(1);
 	}
 
@@ -26,6 +26,7 @@ int main(int argc, char *argv[])
 	size_t width = atoi(argv[2]);
 	size_t inner = atoi(argv[3]);
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[4])};
+	std::string path = argv[5];
 	skepu::setGlobalBackendSpec(spec);
 
 
@@ -47,9 +48,12 @@ int main(int argc, char *argv[])
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
-	printf("My time = %f, height = %lu,"
-	" width = %lu, inner = %lu\n", rtime, height, width, inner);
+	std::ofstream ofile(path+"/mmmult_starpu.txt");
 
+	ofile << "My time = " << rtime <<
+	", height = " << height <<
+	", width = " << width <<
+	", inner = " << inner;
 
 
 	return 0;

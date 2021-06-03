@@ -1,6 +1,6 @@
 #include <iostream>
 #include <skepu>
-
+#include <fstream>
 
 template<typename T>
 T mmmult_f(skepu::Index2D idx, const skepu::Mat<T> lhs, const skepu::Mat<T> rhs)
@@ -15,16 +15,17 @@ T mmmult_f(skepu::Index2D idx, const skepu::Mat<T> lhs, const skepu::Mat<T> rhs)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 4)
+	if (argc < 5)
 	{
 		if(!skepu::cluster::mpi_rank())
-			std::cout << "Usage: " << argv[0] << " height width inner backend\n";
+			std::cout << "Usage: " << argv[0] << " height width inner path\n";
 		exit(1);
 	}
 
 	size_t height = atoi(argv[1]);
 	size_t width = atoi(argv[2]);
 	size_t inner = atoi(argv[3]);
+	std::string path = argv[4];
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[4])};
 	skepu::setGlobalBackendSpec(spec);
 
@@ -49,10 +50,16 @@ int main(int argc, char *argv[])
 	double slowest_rtime = rhs.get_slowest_node(rtime);
 	double avg_rtime = rhs.get_avg_time(rtime);
 
-	printf("Slowest = %f, Avg time = %f, my time = %f, height = %lu,"
-	" width = %lu, inner = %lu\n", slowest_rtime, avg_rtime, rtime, height, width, inner);
+	std::ofstream ofile(path+"/mmmult_gpi.txt");
 
+	ofile << "Slowest = " << slowest_rtime <<
+	", Avg time = " << avg_rtime <<
+	", my time = " << rtime <<
+	", height = " << height <<
+	", width = " << width <<
+	", inner = " << inner;
 
+	ofile.close();
 
 	return 0;
 }
