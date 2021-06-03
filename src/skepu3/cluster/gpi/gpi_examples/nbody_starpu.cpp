@@ -162,17 +162,16 @@ void nbody(skepu::Vector<Particle> &particles, size_t iterations, skepu::Backend
 
 int main(int argc, char *argv[])
 {
-	if (argc < 5)
+	if (argc < 4)
 	{
 		if(!skepu::cluster::mpi_rank())
-			std::cout << "Usage: " << argv[0] << " particles-per-dim iterations backend path\n";
+			std::cout << "Usage: " << argv[0] << " particles-per-dim iterations backend\n";
 		exit(1);
 	}
 
 	const size_t np = std::stoul(argv[1]);
 	const size_t iterations = std::stoul(argv[2]);
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString(argv[3])};
-	std::string path = argv[4];
 
 	auto start = std::chrono::system_clock::now();
 
@@ -188,11 +187,10 @@ int main(int argc, char *argv[])
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
 
-	std::ofstream ofile(path+"/nbody_gpi.txt");
 
-	ofile << "My time = " << rtime <<
+	std::cout << "My time = " << rtime <<
 	", size = " << np <<
-	", iterations = " << iterations;
+	", iterations = " << iterations << std::endl;;
 
 
 

@@ -162,16 +162,15 @@ void nbody(skepu::Vector<Particle> &particles, size_t iterations, skepu::Backend
 
 int main(int argc, char *argv[])
 {
-	if (argc < 4)
+	if (argc < 3)
 	{
 		if(!skepu::cluster::mpi_rank())
-			std::cout << "Usage: " << argv[0] << " particles-per-dim iterations path\n";
+			std::cout << "Usage: " << argv[0] << " particles-per-dim iterations\n";
 		exit(1);
 	}
 
 	const size_t np = std::stoul(argv[1]);
 	const size_t iterations = std::stoul(argv[2]);
-	std::string path = argv[3];
 	auto spec = skepu::BackendSpec{skepu::Backend::typeFromString("")};
 
 	auto start = std::chrono::system_clock::now();
@@ -191,9 +190,6 @@ int main(int argc, char *argv[])
 	double slowest_rtime = particles.get_slowest_node(rtime);
 	double avg_rtime = particles.get_avg_time(rtime);
 
-
-	//std::ofstream ofile(path+"/nbody_gpi.txt");
-	//ofile.close();
 
 	std::cout << "Slowest = " << slowest_rtime <<
 	", Avg time = " << avg_rtime <<
