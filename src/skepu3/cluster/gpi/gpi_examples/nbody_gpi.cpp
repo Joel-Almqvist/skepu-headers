@@ -192,14 +192,14 @@ int main(int argc, char *argv[])
 	double avg_rtime = particles.get_avg_time(rtime);
 
 
-	std::ofstream ofile(path+"/nbody_gpi.txt");
+	//std::ofstream ofile(path+"/nbody_gpi.txt");
+	//ofile.close();
 
-	ofile << "Slowest = " << slowest_rtime <<
+	std::cout << "Slowest = " << slowest_rtime <<
 	", Avg time = " << avg_rtime <<
 	", my time = " << rtime <<
 	", size = " << np <<
-	", iterations = " << iterations;
-
+	", iterations = " << iterations << std::endl;
 
 
 	// NOTE: Code below are working prints to verify the result
