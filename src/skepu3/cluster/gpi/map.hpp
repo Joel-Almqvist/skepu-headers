@@ -199,8 +199,6 @@ namespace skepu{
         dest.get_constraints(int{}, args...);
         dest.wait_for_constraints();
 
-
-
         DestCont::flush_rest(int{}, dest, args...);
 
         // Increment after the flush to guarantee the reads to be safe
@@ -237,7 +235,9 @@ namespace skepu{
             return;
         }
 
-        dest.last_mod_op = dest.op_nr;
+        for(int i = 0; i < dest.nr_nodes; i++){
+          dest.last_mod_op[i] = dest.op_nr;
+        }
         dest.vclock[dest.rank] = ++dest.op_nr;
 
 

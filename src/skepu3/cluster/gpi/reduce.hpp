@@ -61,8 +61,8 @@ namespace skepu{
       // on flush status. We do not flush.
       T* from;
 
-      bool has_flushed = cont.last_flush[cont.rank] > cont.last_mod_op
-        || cont.last_mod_op == 0;
+      bool has_flushed = cont.last_flush[cont.rank] > cont.last_mod_op[cont.rank]
+        || cont.last_mod_op[cont.rank] == 0;
 
       if(has_flushed && !always_use_buffer){
         from = (T*) cont.cont_seg_ptr;

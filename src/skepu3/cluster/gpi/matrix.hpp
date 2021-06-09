@@ -83,7 +83,7 @@ namespace skepu{
     int norm_partition_size;
     long norm_partition_comm_offset;
 
-    unsigned long last_mod_op;
+    unsigned long* last_mod_op;
     unsigned long* last_flush;
 
     // The OP number of the remote when its container was fetched
@@ -317,6 +317,13 @@ namespace skepu{
     static void flush_rest(int sfinae, Matrix<Curr>& curr, Rest&... rest){
 
       curr.conditional_flush();
+
+      for(int i = 0; i < curr.nr_nodes; i++){
+        if(i != curr.rank){
+          curr.remc_flush(i);
+        }
+      }
+
       flush_rest(sfinae, rest...);
     }
 
@@ -330,28 +337,21 @@ namespace skepu{
     static void flush_rest(long){}
 
 
-    // Only flush if there are new changes
+    // Flushes any changes from the double buffer to the GASPI segment if
+    // there exists any non-flushed changes.
     void conditional_flush(){
 
-      if(last_flush[rank] <= last_mod_op){
-        internal_flush();
+      bool empty_buff = last_flush[rank] == 0 && last_mod_op[rank] == 0;
+      if(last_flush[rank] <= last_mod_op[rank] && !empty_buff){
+
+          last_flush[rank] = op_nr + 1;
+          internal_flush();
       }
     }
 
-    // Flush as long as there are the buffer is not garbage
+    // Moves the data from the double buffer to the GASPI segment making it
+    // visible for remote ranks.
     void internal_flush(){
-
-      bool empty_buff = last_flush[rank] == 0 && last_mod_op == 0;
-
-      if(empty_buff || last_flush[rank] == op_nr){
-        return;
-      }
-
-      for(int i = 0; i < nr_nodes; i++){
-        last_flush[i] = op_nr + 1;
-      }
-
-
 
       #pragma omp parallel
       {
@@ -371,14 +371,14 @@ namespace skepu{
 
     // To be called whenever a remote rank calls a conditional flush in order
     // to track the remote's flush status.
-    void remote_conditional_flush(int remote_rank){
+    void remc_flush(int remote){
 
-      if(last_flush[remote_rank] <= last_mod_op){
-        last_flush[remote_rank] = op_nr + 1;
-      }
+      bool empty_buff = last_flush[remote] == 0 && last_mod_op[remote] == 0;
 
+      if(last_flush[remote] <= last_mod_op[remote] && !empty_buff){
+          last_flush[remote] = op_nr + 1;
+        }
     }
-
 
 
     /* Takes in a rank, index, accumulator, decision flag and a variadic list
@@ -546,13 +546,13 @@ namespace skepu{
   }
 
 
-  // Fetches a potentialy remote value.
+  // Multi-threaded fetch for a potentially remote value
   T proxy_get(const size_t i){
     T* comm_buffer = ((T*) comm_seg_ptr );
 
     if(i >= start_i && i <= end_i){
 
-      if(last_flush[rank] >= last_mod_op){
+      if(last_flush[rank] >= last_mod_op[rank]){
 
         // If we have flushed or if the container has never been modified before
         // we read from the container rather than buffer
@@ -569,12 +569,14 @@ namespace skepu{
     unsigned long remote_size = remote_rank == nr_nodes - 1 ?
       last_partition_size : norm_partition_size;
 
-    // The remote value is cached and up to date
-    if(comm_buffer_state[remote_rank] > last_mod_op
-      && comm_buffer_state[remote_rank] != ULONG_MAX){
+    // Check if the remote value is already cached
+    if(
+        comm_buffer_state[remote_rank] > last_mod_op[remote_rank]
+        && comm_buffer_state[remote_rank] > last_flush[remote_rank]
+        && comm_buffer_state[remote_rank] != ULONG_MAX
+      ){
       return comm_buffer[i];
     }
-
 
     comm_buffer_locks[remote_rank].lock();
 
@@ -586,13 +588,18 @@ namespace skepu{
 
     else{
 
-      comm_buffer_locks[rank].lock();
+      // Use the thread-safe wait provided by Environment
+      Environment& env = Environment::get_instance();
+      T* buffer = ((T*) comm_seg_ptr + norm_partition_size * remote_rank);
 
-      wait_ranks.push_back(remote_rank);
-      wait_for_vclocks(last_flush[remote_rank]);
-
-      comm_buffer_locks[rank].unlock();
-
+      env.wait_for_remote(
+        remote_rank,
+        last_flush[remote_rank],
+        (long unsigned*) buffer,
+        segment_id,
+        sizeof(T) * (norm_partition_size * remote_rank + local_size),
+        queue
+      );
 
       unsigned long read_size = remote_rank != nr_nodes - 1 ?
         (norm_partition_size ) * sizeof(T) :
@@ -712,7 +719,7 @@ namespace skepu{
       comm_buffer_locks = new std::mutex[nr_nodes];
 
 
-      last_mod_op = 0;
+      last_mod_op = (unsigned long*) calloc(nr_nodes, sizeof(unsigned long));
       last_flush = (unsigned long*) calloc(nr_nodes, sizeof(unsigned long));
 
     };
@@ -780,7 +787,7 @@ namespace skepu{
 
       wait_for_constraints();
       conditional_flush();
-      last_mod_op = ++op_nr;
+      last_mod_op[rank] = ++op_nr;
 
       std::uniform_real_distribution<TT> dis(from, to);
 
@@ -802,7 +809,7 @@ namespace skepu{
 
       wait_for_constraints();
       conditional_flush();
-      last_mod_op = ++op_nr;
+      last_mod_op[rank] = ++op_nr;
 
 
       std::uniform_int_distribution<TT> dis(from, to);
@@ -865,7 +872,6 @@ namespace skepu{
       if(index >= start_i && index <= end_i){
 
         wait_for_constraints();
-
         conditional_flush();
         vclock[rank] = ++op_nr;
 
@@ -882,13 +888,13 @@ namespace skepu{
       // The value is remote
 
       int remote_rank = get_owner(index);
-      remote_conditional_flush(remote_rank);
+      remc_flush(remote_rank);
 
       T* comm_buffer = ((T*) comm_seg_ptr );
       vclock[rank] = ++op_nr;
 
       // Check if we have the value cached
-      if(comm_buffer_state[remote_rank] <= last_mod_op
+      if(comm_buffer_state[remote_rank] <= last_mod_op[rank]
         || comm_buffer_state[remote_rank] == ULONG_MAX){
 
           wait_ranks.push_back(remote_rank);
@@ -939,13 +945,40 @@ namespace skepu{
       std::cout << std::endl;
     }
 
+    void print_flush(){
+      std::cout << "Rank " << rank << " has last_flush: ";
+
+      for(int i = 0; i < nr_nodes; i++){
+        std::cout << last_flush[i] << ", ";
+      }
+
+      std::cout << std::endl;
+    }
+
+
+    void print_modop(){
+      std::cout << "Rank " << rank << " has mod_op: ";
+
+      for(int i = 0; i < nr_nodes; i++){
+        std::cout << last_mod_op[i] << ", ";
+      }
+
+      std::cout << std::endl;
+    }
+
+
 
     // WARNING Only use this for debugging, it has very poor performance
     void print(){
 
       op_nr++;
       wait_for_constraints();
-      internal_flush();
+      conditional_flush();
+      for(int i = 0; i < nr_nodes; i++){
+        if(i != rank)
+        remc_flush(i);
+      }
+
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
@@ -991,7 +1024,7 @@ namespace skepu{
 
       op_nr++;
       wait_for_constraints();
-      internal_flush();
+      conditional_flush();
 
       for(int i = 0; i < nr_nodes; i++){
         if(i == rank){
