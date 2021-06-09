@@ -42,6 +42,9 @@ namespace skepu{
       // Must be initialized by derived classes
       unsigned long* vclock;
 
+      // A constraint follows the following scheme (rank, op_nr) and should be
+      // interpreted as the lowest op_nr the remote rank must reach before we
+      // are allowed to modify the containers data.
       std::map<int, unsigned long> constraints;
 
       Container() : wait_ranks{}, op_nr{Environment::op_nr}{
