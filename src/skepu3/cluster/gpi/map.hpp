@@ -209,8 +209,10 @@ namespace skepu{
 
 
         // Pre fetch all remote values we know that we want
-        _gpi::build_buff_helper<0, arg_tup_t, typename _gpi::is_skepu_proxy_type<arg_0_t>::type>
-        ::build(false, double{}, dest, args...);
+        _gpi::build_buffer_util<nr_args, 0, arg_tup_t>
+        ::build(
+          int{}, int{}, int{}, int{}, int{},
+          arg_0_t{}, dest, args...);
 
         #pragma omp parallel
         {

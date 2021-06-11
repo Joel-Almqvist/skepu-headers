@@ -241,76 +241,198 @@ namespace skepu{
     };
 
 
-    // The current argument type is a proxy and we never want to call build_buffer
-    template<int ctr, typename Tup, typename T>
-    struct build_buff_helper{
+    // Helps with compilation by adding a out of bounds check for the tuple type.
+    template<int ctr, typename Tup, bool>
+    struct next_t_helper{};
 
-      template<typename Dest, typename First, typename ... Rest>
-      static void build(bool no_wait, int SFINAE_param, Dest& dest,
-          First& first, Rest&... rest){
-
-          using NextT = decltype(std::get<ctr + 1>(std::declval<Tup>()));
-
-          build_buff_helper<ctr + 1, Tup, typename is_skepu_proxy_type<NextT>::type>
-          ::build(no_wait, double{}, dest, rest...);
-      }
-
-      // Sink
-      template<typename Dest, typename First>
-      static void build(bool no_wait, int SFINAE_param, Dest& dest,
-          Matrix<First>& first){}
-
-      // Sink
-      template<typename Dest>
-      static void build(bool no_wait, double SFINAE_param, Dest& dest){}
-    };
-
-    // The current lambda argument is not a proxy type, but we need to make sure
-    // that it also is not a constant.
     template<int ctr, typename Tup>
-    struct build_buff_helper<ctr, Tup, std::false_type>{
-
-      template<typename Dest, typename First, typename ... Rest>
-      static void build(bool no_wait, double SFINAE_param, Dest& dest,
-          Matrix<First>& first, Rest&... rest){
-
-        dest.build_buffer_helper(no_wait, first);
-
-        using NextT = decltype(std::get<ctr + 1>(std::declval<Tup>()));
-
-        build_buff_helper<ctr + 1, Tup, typename is_skepu_proxy_type<NextT>::type>
-        ::build(no_wait, double{}, dest, rest...);
-      }
-
-
-      // Not a proxy and not a matrix -> constant
-      template<typename Dest, typename First, typename ... Rest>
-      static void build(bool no_wait, double SFINAE_param, Dest& dest,
-          First&& first, Rest&... rest){
-
-        using NextT = decltype(std::get<ctr + 1>(std::declval<Tup>()));
-        build_buff_helper<ctr + 1, Tup, typename is_skepu_proxy_type<NextT>::type>
-        ::build(no_wait, double{}, dest, rest...);
-      }
-
-      template<typename Dest, typename First>
-      static void build(bool no_wait, double SFINAE_param, Dest& dest,
-          Matrix<First>& first){
-        dest.build_buffer_helper(no_wait, first);
-      }
-
-      // Not a proxy and not a matrix -> constant
-      template<typename Dest, typename First>
-      static void build(bool no_wait, double SFINAE_param, Dest& dest,
-          First&& first){}
-
-      // Sink
-      template<typename Dest>
-      static void build(bool no_wait, double SFINAE_param, Dest& dest){}
-
-
+    struct next_t_helper<ctr, Tup, true>{
+      using type = typename std::remove_reference
+      <
+      decltype(std::get<ctr>(std::declval<Tup>()))
+      >::type;
 
     };
+
+    template<int ctr, typename Tup>
+    struct next_t_helper<ctr, Tup, false>{
+      using type = std::false_type;
+
+    };
+
+
+    template<int nr_args, int ctr, typename Tup>
+    struct build_buffer_util{
+
+      /*
+      * This helper struct is used to decide which build to call. There are 6
+      * cases which are sorted from highest SFINAE priority to lowest. The
+      * functions attempts to deduce whether a argument which may or may not be
+      * a container is using the random access pattern or not. If not the
+      * function calls build buffer on the container.
+      *
+      * Note that the only case which in fact calls build buffer is case 5.
+      *
+      * Note that an index argument makes us traverse one step in the argument
+      * types chain but no step in the variadic types chain.
+      *
+      */
+
+
+      // Case 1 A
+      template<typename Dest, typename First, typename... Rest>
+      static void build(
+        int, int, int, int, int,
+        Index1D, Dest& dest, First& first, Rest&... rest){
+        // Reuse first for recursive call
+
+
+        using next_t = typename next_t_helper<ctr, Tup, (nr_args - 1) == ctr>::type;
+
+
+        build_buffer_util<nr_args, ctr + 1, Tup>::build(
+          int{}, int{}, int{}, int{}, int{},
+          next_t{}, dest, first, rest...
+        );
+      }
+
+      // Case 1 B
+      template<typename Dest, typename First>
+      static void build(
+        int, int, int, int, int,
+        Index1D, Dest& dest, First& first){
+      }
+
+
+      // Case 2 A
+      template<typename Dest, typename First, typename... Rest>
+      static void build(
+        int, int, int, int, long,
+        Index2D, Dest& dest, First& first, Rest&... rest){
+        // Reuse first for recursive call
+
+        using next_t = typename next_t_helper<ctr, Tup, (nr_args - 1) == ctr>::type;
+
+        build_buffer_util<nr_args, ctr + 1, Tup>::build(
+          int{}, int{}, int{}, int{}, int{},
+          next_t{}, dest, first, rest...
+        );
+
+      }
+
+      // Case 2 B
+      template<typename Dest, typename First>
+      static void build(
+        int, int, int, int, long,
+        Index2D, Dest& dest, First& first){
+      }
+
+
+      // Case 3 A
+      template<typename T, typename Dest, typename First, typename... Rest>
+      static void build(
+        int, int, int, long, long,
+        Vec<T>, Dest& dest, Matrix<First>& first, Rest&... rest){
+        // Only recursive call
+
+        using next_t = typename next_t_helper<ctr, Tup, (nr_args - 1) == ctr>::type;
+
+        build_buffer_util<nr_args, ctr + 1, Tup>::build(
+          int{}, int{}, int{}, int{}, int{},
+          next_t{}, dest, rest...
+        );
+
+      }
+
+      // Case 3 B
+      template<typename T, typename Dest, typename First>
+      static void build(
+        int, int, int, long, long,
+        Vec<T>, Dest& dest, Matrix<First>& first){
+      }
+
+      // Case 4 A
+      template<typename T, typename Dest, typename First, typename... Rest>
+      static void build(
+        int, int, long, long, long,
+        Mat<T>, Dest& dest, Matrix<First>& first, Rest&... rest){
+        // Only recursive call
+
+        using next_t = typename next_t_helper<ctr, Tup, (nr_args - 1) == ctr>::type;
+
+        build_buffer_util<nr_args, ctr + 1, Tup>::build(
+          int{}, int{}, int{}, int{}, int{},
+          next_t{}, dest, rest...
+        );
+
+      }
+
+      // Case 4 B
+      template<typename T, typename Dest, typename First>
+      static void build(
+        int, int, long, long, long,
+        Mat<T>, Dest& dest, Matrix<First>& first){
+      }
+
+
+      // Case 5 A
+      // This case is the only one which actually calls build buffer
+      template<typename T, typename Dest, typename First, typename... Rest>
+      static void build(
+        int, long, long, long, long,
+        T, Dest& dest, Matrix<First>& first, Rest&... rest){
+
+        using next_t = typename next_t_helper<ctr, Tup, (nr_args - 1) == ctr>::type;
+
+        build_buffer_util<nr_args, ctr + 1, Tup>::build(
+          int{}, int{}, int{}, int{}, int{},
+          next_t{}, dest, rest...
+        );
+
+        dest.build_buffer_helper(first);
+      }
+
+      // Case 5 B
+      // This case is the only one which actually calls build buffer
+      template<typename T, typename Dest, typename First>
+      static void build(
+        int, long, long, long, long,
+        T, Dest& dest, Matrix<First>& first){
+
+        dest.build_buffer_helper(first);
+
+      }
+
+
+      // Case 6 A
+      template<typename T, typename Dest, typename First, typename... Rest>
+      static void build(
+        long, long, long, long, long,
+        T, Dest& dest, First& first, Rest&... rest){
+        // Only recursive call
+
+        using next_t = typename next_t_helper<ctr, Tup, (nr_args - 1) == ctr>::type;
+
+        build_buffer_util<nr_args, ctr + 1, Tup>::build(
+          int{}, int{}, int{}, int{}, int{},
+          next_t{}, dest, rest...
+        );
+
+      }
+
+      // Case 6 B
+      template<typename T, typename Dest, typename First>
+      static void build(
+        long, long, long, long, long,
+        T, Dest& dest, First& first){
+        // Only recursive call
+      }
+    };
+
+
+
+
+
   } // end of namespace _gpi
 }
 

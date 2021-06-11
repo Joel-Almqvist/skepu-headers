@@ -31,6 +31,10 @@ namespace skepu{
 
     template<int, typename Tup, typename T>
     struct build_buff_helper;
+
+    template<int nr_args, int ctr, typename Tup>
+    struct build_buffer_util;
+
   }
 
   template<typename T>
@@ -62,8 +66,9 @@ namespace skepu{
 
     friend class _gpi::build_tup_util;
 
-    template<int, typename TTup, typename TT>
-    friend class _gpi::build_buff_helper;
+    template<int nr_args, int ctr, typename Tup>
+    friend class _gpi::build_buffer_util;
+
 
   private:
     // Used to store two versions of the data so that Map may use a random access
@@ -441,7 +446,11 @@ namespace skepu{
     * current state.
     */
     template<typename Cont>
-    void build_buffer_helper(bool no_wait, Cont& cont){
+    void build_buffer_helper(Cont& cont){
+
+      if(cont == *this)
+        return;
+
       int transfered_obj = 0;
 
       unsigned swap_offset = sizeof(T) * cont.rank * cont.norm_partition_size;
@@ -459,7 +468,7 @@ namespace skepu{
         wait_for_vclocks(op_nr);
 
         // read range is inclusive
-        cont.read_range(start_i, cont.start_i - 1, swap_offset, cont, no_wait);
+        cont.read_range(start_i, cont.start_i - 1, swap_offset, cont, false);
       }
 
       if(cont.end_i < end_i){
@@ -473,7 +482,7 @@ namespace skepu{
         wait_for_vclocks(op_nr);
 
         cont.read_range(cont.end_i + 1, end_i, swap_offset +
-            transfered_obj * sizeof(T), cont, no_wait);
+            transfered_obj * sizeof(T), cont, false);
 
       }
     }
