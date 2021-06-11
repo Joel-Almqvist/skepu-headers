@@ -16,24 +16,12 @@ namespace skepu{
   class Reduce1D{
   private:
     std::function<ret_t(arg_t, arg_t)> func;
-    bool always_use_buffer;
-
     ret_t start_value;
-
-  protected:
-
-    // Constructor used by MapReduce
-    Reduce1D(std::function<ret_t(arg_t, arg_t)> func, bool flag) : func{func},
-     always_use_buffer{flag}, start_value{} {};
 
   public:
 
     Reduce1D(std::function<ret_t(arg_t, arg_t)> func) : func{func},
-      always_use_buffer{false}, start_value{} {
-
-      //using T = typename _gpi::get_tup_t<ReduceFunc, 2>::type;
-      // TODO do something else
-      //using TT = func()
+      start_value{} {
 
     };
 
@@ -64,7 +52,7 @@ namespace skepu{
       bool has_flushed = cont.last_flush[cont.rank] > cont.last_mod_op[cont.rank]
         || cont.last_mod_op[cont.rank] == 0;
 
-      if(has_flushed && !always_use_buffer){
+      if(has_flushed){
         from = (T*) cont.cont_seg_ptr;
       }
       else{
