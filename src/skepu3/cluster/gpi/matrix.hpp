@@ -75,18 +75,18 @@ namespace skepu{
     // type within its function.
     T* local_buffer;
 
-    int local_size;
-    size_t global_size;
+    unsigned long local_size;
+    unsigned long global_size;
 
     unsigned long comm_offset;
     unsigned long comm_size;
 
     // Global information about the container
-    int last_partition_size;
-    long last_partition_comm_offset;
+    unsigned long last_partition_size;
+    unsigned long last_partition_comm_offset;
 
-    int norm_partition_size;
-    long norm_partition_comm_offset;
+    unsigned long norm_partition_size;
+    unsigned long norm_partition_comm_offset;
 
     unsigned long* last_mod_op;
     unsigned long* last_flush;
@@ -96,8 +96,8 @@ namespace skepu{
     std::mutex* comm_buffer_locks;
 
     // Indiciates which indeces this partition handles
-    long start_i;
-    long end_i;
+    unsigned long start_i;
+    unsigned long end_i;
 
     size_t row;
     size_t col;
@@ -129,8 +129,8 @@ namespace skepu{
     //communication buffer starting at offset local_offset.
     // Inclusive range, [start, end]
     void read_range(
-      int start,
-      int end,
+      unsigned long start,
+      unsigned long end,
       unsigned long local_offset,
       Matrix& dest_cont,
       bool no_wait = false
@@ -139,8 +139,8 @@ namespace skepu{
         int highest_rank = dest_cont.get_owner(end);
 
         int curr_seg_id;
-        int ranks_last_elem;
-        int ranks_first_elem;
+        unsigned long ranks_last_elem;
+        unsigned long ranks_first_elem;
 
         int nr_elems_to_send;
         int sent_elems = 0;
