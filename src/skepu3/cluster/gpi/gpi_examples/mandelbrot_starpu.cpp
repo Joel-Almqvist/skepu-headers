@@ -58,7 +58,7 @@ void save_image(size_t width, size_t height, T *buf, T max)
 	SCALE = 2.5f;
 
 [[skepu::userconstant]] constexpr size_t
-	MAX_ITERS = 1000;
+	MAX_ITERS = 10000;
 
 struct cplx
 {
@@ -91,7 +91,7 @@ size_t mandelbrot_f(skepu::Index2D index, float height, float width)
 	for (size_t i = 0; i < MAX_ITERS; ++i)
 	{
 		a = add_c(mult_c(a, a), c);
-		if ((a.a * a.a + a.b * a.b) > 4)
+		if ((a.a * a.a + a.b * a.b) > 9)
 			return i;
 	}
 	return MAX_ITERS;
@@ -123,11 +123,8 @@ int main(int argc, char* argv[])
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
-	double slowest_rtime = iterations.get_slowest_node(rtime);
-	double avg_rtime = iterations.get_avg_time(rtime);
-
-	printf("Slowest = %f, Avg time = %f, my time = %f, width = %lu, height = %lu\n",
-		slowest_rtime, avg_rtime, rtime, width, height);
+	printf("My time = %f, width = %lu, height = %lu\n",
+		rtime, width, height);
 
 
 
