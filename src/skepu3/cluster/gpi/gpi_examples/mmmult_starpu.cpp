@@ -2,7 +2,6 @@
 #include <skepu>
 #include <fstream>
 
-
 template<typename T>
 T mmmult_f(skepu::Index2D idx, const skepu::Mat<T> lhs, const skepu::Mat<T> rhs)
 {
@@ -30,7 +29,6 @@ int main(int argc, char *argv[])
 	skepu::setGlobalBackendSpec(spec);
 
 
-	auto start = std::chrono::system_clock::now();
 
 	skepu::Matrix<float> lhs(height, inner), rhs(inner, width), res(height, width);
 	lhs.randomize(3, 9);
@@ -41,10 +39,11 @@ int main(int argc, char *argv[])
 
 
 	auto mmprod = skepu::Map(mmmult_f<float>);
+	auto start = std::chrono::system_clock::now();
 	mmprod(res, lhs, rhs);
 
 	res.flush();
-
+	//starpu_task_wait_for_all();
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 

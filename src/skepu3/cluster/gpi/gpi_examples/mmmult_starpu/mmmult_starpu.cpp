@@ -6,7 +6,6 @@
 #include <skepu>
 #include <fstream>
 
-
 template<typename T>
 T mmmult_f(skepu::Index2D idx, const skepu::Mat<T> lhs, const skepu::Mat<T> rhs)
 {
@@ -70,7 +69,7 @@ static inline SKEPU_ATTRIBUTE_FORCE_INLINE float CPU(skepu::Index2D idx, const s
 #undef SKEPU_USING_BACKEND_CPU
 };
 
-#line 17 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mmmult_starpu.cpp"
+#line 16 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mmmult_starpu.cpp"
 int main(int argc, char *argv[])
 {
 	if (argc < 4)
@@ -87,7 +86,6 @@ int main(int argc, char *argv[])
 	skepu::setGlobalBackendSpec(spec);
 
 
-	auto start = std::chrono::system_clock::now();
 
 	skepu::Matrix<float> lhs(height, inner), rhs(inner, width), res(height, width);
 	lhs.randomize(3, 9);
@@ -98,10 +96,11 @@ int main(int argc, char *argv[])
 
 
 	skepu::backend::Map<0, skepu_userfunction_skepu_skel_0mmprod_mmmult_f_float, bool, void> mmprod(false);
+	auto start = std::chrono::system_clock::now();
 	mmprod(res, lhs, rhs);
 
 	res.flush();
-
+	//starpu_task_wait_for_all();
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
