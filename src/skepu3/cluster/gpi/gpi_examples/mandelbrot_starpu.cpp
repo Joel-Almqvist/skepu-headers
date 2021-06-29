@@ -119,7 +119,7 @@ int main(int argc, char* argv[])
 	mandelbroter(iterations, height, width);
 	iterations.flush();
 
-
+	//starpu_task_wait_for_all();
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 

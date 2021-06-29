@@ -34,10 +34,24 @@ int main(int argc, char *argv[])
 	float x = atof(argv[1]);
 	size_t N = std::stoul(argv[2]);
 
+	auto start = std::chrono::system_clock::now();
+
 	auto taylor = skepu::MapReduce<0>(nth_term, plus);
 	taylor.setDefaultSize(N);
 
-	std::cout << "Result: ln(" << x << ") = " << taylor(x - 1) << "\n";
+	//starpu_task_wait_for_all();
+	auto end = std::chrono::system_clock::now();
+
+	double rtime = std::chrono::duration<double>{end - start}.count();
+
+	float res = taylor(x - 1);
+
+	std::cout << "Res: ln(" << x << ") = " << res <<
+	", my time = " << rtime <<
+	", N = " << N <<  std::endl;
+
+
+	//std::cout << "Result: ln(" << x << ") = " << taylor(x - 1) << "\n";
 
 	return 0;
 

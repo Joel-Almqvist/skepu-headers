@@ -102,58 +102,6 @@ size_t mandelbrot_f(skepu::Index2D index, float height, float width)
 }
 
 
-struct skepu_userfunction_skepu_skel_0mandelbroter_add_c
-{
-constexpr static size_t totalArity = 2;
-constexpr static size_t outArity = 1;
-constexpr static bool indexed = 0;
-using IndexType = void;
-using ElwiseArgs = std::tuple<>;
-using ContainerArgs = std::tuple<>;
-using UniformArgs = std::tuple<cplx, cplx>;
-typedef std::tuple<> ProxyTags;
-constexpr static skepu::AccessMode anyAccessMode[] = {
-};
-
-using Ret = cplx;
-
-constexpr static bool prefersMatrix = 0;
-
-#define SKEPU_USING_BACKEND_OMP 1
-#undef VARIANT_CPU
-#undef VARIANT_OPENMP
-#undef VARIANT_CUDA
-#define VARIANT_CPU(block)
-#define VARIANT_OPENMP(block) block
-#define VARIANT_CUDA(block)
-static inline SKEPU_ATTRIBUTE_FORCE_INLINE cplx OMP(cplx lhs, cplx rhs)
-{
-	cplx r;
-	r.a = lhs.a + rhs.a;
-	r.b = lhs.b + rhs.b;
-	return r;
-}
-#undef SKEPU_USING_BACKEND_OMP
-
-#define SKEPU_USING_BACKEND_CPU 1
-#undef VARIANT_CPU
-#undef VARIANT_OPENMP
-#undef VARIANT_CUDA
-#define VARIANT_CPU(block) block
-#define VARIANT_OPENMP(block)
-#define VARIANT_CUDA(block) block
-static inline SKEPU_ATTRIBUTE_FORCE_INLINE cplx CPU(cplx lhs, cplx rhs)
-{
-	cplx r;
-	r.a = lhs.a + rhs.a;
-	r.b = lhs.b + rhs.b;
-	return r;
-}
-#undef SKEPU_USING_BACKEND_CPU
-};
-
-#line 100 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mandelbrot_starpu.cpp"
-
 struct skepu_userfunction_skepu_skel_0mandelbroter_mult_c
 {
 constexpr static size_t totalArity = 2;
@@ -199,6 +147,58 @@ static inline SKEPU_ATTRIBUTE_FORCE_INLINE cplx CPU(cplx lhs, cplx rhs)
 	cplx r;
 	r.a = lhs.a * rhs.a - lhs.b * rhs.b;
 	r.b = lhs.b * rhs.a + lhs.a * rhs.b;
+	return r;
+}
+#undef SKEPU_USING_BACKEND_CPU
+};
+
+#line 100 "/home/joel/Documents/exjobb/skepu/skepu_fork/skepu/skepu-headers/src/skepu3/cluster/gpi/gpi_examples/mandelbrot_starpu.cpp"
+
+struct skepu_userfunction_skepu_skel_0mandelbroter_add_c
+{
+constexpr static size_t totalArity = 2;
+constexpr static size_t outArity = 1;
+constexpr static bool indexed = 0;
+using IndexType = void;
+using ElwiseArgs = std::tuple<>;
+using ContainerArgs = std::tuple<>;
+using UniformArgs = std::tuple<cplx, cplx>;
+typedef std::tuple<> ProxyTags;
+constexpr static skepu::AccessMode anyAccessMode[] = {
+};
+
+using Ret = cplx;
+
+constexpr static bool prefersMatrix = 0;
+
+#define SKEPU_USING_BACKEND_OMP 1
+#undef VARIANT_CPU
+#undef VARIANT_OPENMP
+#undef VARIANT_CUDA
+#define VARIANT_CPU(block)
+#define VARIANT_OPENMP(block) block
+#define VARIANT_CUDA(block)
+static inline SKEPU_ATTRIBUTE_FORCE_INLINE cplx OMP(cplx lhs, cplx rhs)
+{
+	cplx r;
+	r.a = lhs.a + rhs.a;
+	r.b = lhs.b + rhs.b;
+	return r;
+}
+#undef SKEPU_USING_BACKEND_OMP
+
+#define SKEPU_USING_BACKEND_CPU 1
+#undef VARIANT_CPU
+#undef VARIANT_OPENMP
+#undef VARIANT_CUDA
+#define VARIANT_CPU(block) block
+#define VARIANT_OPENMP(block)
+#define VARIANT_CUDA(block) block
+static inline SKEPU_ATTRIBUTE_FORCE_INLINE cplx CPU(cplx lhs, cplx rhs)
+{
+	cplx r;
+	r.a = lhs.a + rhs.a;
+	r.b = lhs.b + rhs.b;
 	return r;
 }
 #undef SKEPU_USING_BACKEND_CPU
@@ -295,7 +295,7 @@ int main(int argc, char* argv[])
 	mandelbroter(iterations, height, width);
 	iterations.flush();
 
-
+	starpu_task_wait_for_all();
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
