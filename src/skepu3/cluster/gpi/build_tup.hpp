@@ -40,7 +40,7 @@ namespace skepu{
       // Index argument case
       template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
       static auto build_tuple_helper(Index1D sfinae_param, size_t i, Tup& tup,
-        Dest& dest, Matrix<Curr>& curr)
+        Dest& dest, Curr& curr)
         -> decltype(
         std::declval<void>())
       {
@@ -53,7 +53,7 @@ namespace skepu{
       // Index argument case
       template<int tup_arg_ctr, typename Tup, typename Dest, typename Curr>
       static auto build_tuple_helper(Index2D sfinae_param, size_t i, Tup& tup,
-        Dest& dest, Matrix<Curr>& curr)
+        Dest& dest, Curr& curr)
         -> decltype(
         std::declval<void>())
       {

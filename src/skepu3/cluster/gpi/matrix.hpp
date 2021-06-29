@@ -307,9 +307,10 @@ namespace skepu{
 
       for(auto& c : constraints){
 
-        wait_ranks.push_back(c.first);
-        wait_for_vclocks(c.second);
-
+        if(vclock[c.first] < c.second){
+          wait_ranks.push_back(c.first);
+          wait_for_vclocks(c.second);
+        }
       }
       constraints.clear();
     }
@@ -350,6 +351,8 @@ namespace skepu{
       if(last_flush[rank] <= last_mod_op[rank] && !empty_buff){
 
           last_flush[rank] = op_nr + 1;
+          wait_for_constraints();
+
           internal_flush();
       }
     }

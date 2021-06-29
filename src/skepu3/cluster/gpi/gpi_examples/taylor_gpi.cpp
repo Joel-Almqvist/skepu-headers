@@ -2,7 +2,6 @@
  * Taylor series calculation, natural log(1+x)  sum(1:N) (((-1)^(i+1))/i)*x^i
  */
 
-
 #include <iostream>
 #include <cmath>
 
@@ -35,20 +34,11 @@ int main(int argc, char *argv[])
 	float x = atof(argv[1]);
 	size_t N = std::stoul(argv[2]);
 
-	skepu::Matrix<float> m1{N};
-	auto t_map = skepu::Map<0>(nth_term);
-	auto t_red = skepu::Reduce(plus);
+	auto taylor = skepu::MapReduce<0>(nth_term, plus);
+	taylor.setDefaultSize(N);
 
-	t_map(m1, x - 1);
-
-	m1.print();
-
-	float res = t_red(m1);
-	//auto taylor = skepu::MapReduce<0>(nth_term, plus);
-	//taylor.setDefaultSize(N);
-
-	// 	std::cout << "Result: ln(" << x << ") = " << taylor(x - 1) << "\n";
-	std::cout << "Result: ln(" << x << ") = " << res << "\n";
+	std::cout << "Result: ln(" << x << ") = " << taylor(x - 1) << "\n";
 
 	return 0;
+
 }

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 #include <omp.h>
+#include <climits>
 /*
 * This singleton scheme allows for better control of global state.
 * In particular it calls gaspi_init and terminate correctly.
@@ -17,22 +18,104 @@ private:
 
   ~Environment(){
     delete generator;
+
+    // This barrier is only needed by mapreduce without any container
+    gaspi_barrier(GASPI_GROUP_ALL, GASPI_BLOCK);
+
     gaspi_proc_term(GASPI_BLOCK);
   };
 
-  Environment() : init_called{false}{};
+  Environment() :
+  init_called{false},
+  mapred_seg_created{false},
+  mapred_swapspace_ptr{nullptr}
+  {};
 
   bool init_called;
+  bool mapred_seg_created;
   std::mutex* rank_locks;
 
 
   gaspi_rank_t rank;
   gaspi_rank_t nr_nodes;
-
   inline static gaspi_pointer_t vclock_void;
 
+  gaspi_pointer_t mapred_swapspace_ptr;
+  gaspi_queue_id_t env_queue;
 
   inline static std::mt19937* generator;
+
+
+
+
+  // Reads the remote vclock and updates our own
+  // Take in the vclock offsets since we might read from a container with
+  // a different type or size (and hence offset) than ourselves.
+  void get_vclock(int dest_rank){
+      if(dest_rank == get_rank()){
+        // Reading our own vclock does nothing
+        return;
+      }
+
+    auto res = gaspi_read_notify(
+      0, // local seg
+      sizeof(unsigned long) * nr_nodes, // local offset
+      dest_rank,
+      0, // dest seg
+      0, // remote offset
+      sizeof(unsigned long) * nr_nodes,
+      100, // notif id
+      env_queue,
+      GASPI_BLOCK
+    );
+
+    if(res == GASPI_QUEUE_FULL){
+      gaspi_wait(env_queue, GASPI_BLOCK);
+
+      gaspi_read_notify(
+        0, // local seg
+        sizeof(unsigned long) * nr_nodes, // local offset
+        dest_rank,
+        0, // dest seg
+        0, // remote offsett
+        sizeof(unsigned long) * nr_nodes,
+        100, // notif id
+        env_queue,
+        GASPI_BLOCK
+      );
+    }
+
+
+    gaspi_notification_id_t notify_id;
+    gaspi_notification_t notify_val;
+
+
+    gaspi_notify_waitsome(
+      0, // seg id
+      100, //notif id
+      1,
+      &notify_id,
+      GASPI_BLOCK
+      );
+
+    gaspi_notify_reset(0, notify_id, &notify_val);
+
+
+    for(int i = 0; i < nr_nodes; i++){
+      if(i == rank){
+        vclock[i] = Environment::op_nr;
+      }
+      else{
+        vclock[i] = std::max(vclock[i + nr_nodes], vclock[i]);
+      }
+    }
+  };
+
+
+
+
+
+
 
 public:
   static Environment& get_instance(){
@@ -42,7 +125,6 @@ public:
 
 
   inline static unsigned long* vclock;
-
 
   inline static long unsigned op_nr = 0;
 
@@ -76,6 +158,34 @@ public:
        generator = new std::mt19937(std::random_device{}() );
      }
      return *generator;
+   }
+
+   static int get_rank(){
+     Environment& env = Environment::get_instance();
+     if(!env.init_called){
+       env.init();
+     }
+
+     return env.rank;
+   }
+
+   static int get_nr_nodes(){
+     Environment& env = Environment::get_instance();
+     if(!env.init_called){
+       env.init();
+     }
+
+     return env.nr_nodes;
+   }
+
+   static long unsigned* get_vclock(){
+     Environment& env = Environment::get_instance();
+     if(!env.init_called){
+       env.init();
+     }
+
+     return (long unsigned*) env.vclock_void;
+
    }
 
 
@@ -185,8 +295,60 @@ public:
    }
 
 
-};
+   // MapReduce may be called without a container existing hence the data must
+   // be stored globally somewhere.
+   template<typename T>
+   static void create_mapred_swapspace(T){
+     Environment& env = Environment::get_instance();
 
+
+     if(!env.init_called){
+       env.init();
+     }
+
+     if(!env.mapred_seg_created){
+
+       assert(gaspi_segment_create(
+         UCHAR_MAX - 1, // Highest allowed segment ID
+         gaspi_size_t{sizeof(T) * env.nr_nodes},
+         GASPI_GROUP_ALL,
+         GASPI_BLOCK,
+         GASPI_MEM_INITIALIZED
+       ) == GASPI_SUCCESS);
+
+       gaspi_segment_ptr(UCHAR_MAX - 1, &(env.mapred_swapspace_ptr));
+       gaspi_queue_create(&env.env_queue, GASPI_BLOCK);
+       env.mapred_seg_created = true;
+
+     }
+
+   }
+
+   static gaspi_pointer_t get_mapred_swapspace(){
+     Environment& env = Environment::get_instance();
+     return env.mapred_swapspace_ptr;
+   }
+
+   static gaspi_queue_id_t get_queue(){
+     Environment& env = Environment::get_instance();
+     return env.env_queue;
+   }
+
+
+   static void wait_for_vclocks(unsigned long wait_val, int dest_rank){
+     Environment& env = Environment::get_instance();
+
+       while(true){
+         env.get_vclock(dest_rank);
+         if(env.vclock[dest_rank] >= wait_val){
+           break;
+         }
+         else{
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+         }
+       }
+     }
+};
 
 
 #endif//ENVIRONMENT_HPP
