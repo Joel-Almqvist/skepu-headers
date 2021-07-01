@@ -316,6 +316,106 @@ namespace skepu{
     }
 
 
+    // Determines whether a potential container argument is used through random
+    // access or not. Then it sets the constraints appropriately.
+    template<typename First, typename... Rest>
+    static void set_constraints(
+      int sfinae,
+      bool* random_access,
+      int ptr_index,
+      long unsigned start_index,
+      long unsigned end_index,
+      Matrix<First>& first,
+      Rest&&... rest)
+      {
+        int start;
+        int end;
+        if(random_access[ptr_index]){
+          start = 0;
+          end = first.nr_nodes - 1;
+        }
+        else{
+          start = first.get_owner(start_index);
+          end = first.get_owner(end_index);
+
+        }
+
+        for(int i = start; i <= end; i++){
+          if(i == first.rank)
+            continue;
+
+          first.constraints[i] = first.op_nr;
+        }
+
+        set_constraints(
+          int{},
+          random_access,
+          ptr_index,
+          start_index,
+          end_index,
+          rest...);
+
+      }
+
+
+    template<typename Last>
+    static void set_constraints(
+      int sfinae,
+      bool* random_access,
+      int ptr_index,
+      long unsigned start_index,
+      long unsigned end_index,
+      Matrix<Last>& last){
+        int start;
+        int end;
+        if(random_access[ptr_index]){
+          start = 0;
+          end = last.nr_nodes - 1;
+        }
+        else{
+          start = last.get_owner(start_index);
+          end = last.get_owner(end_index);
+
+        }
+
+        for(int i = start; i <= end; i++){
+          if(i == last.rank)
+            continue;
+          last.constraints[i] = last.op_nr;
+        }
+    }
+
+    // Sink, the current argument is not a container
+    template<typename First, typename... Rest>
+    static void set_constraints(
+      long sfinae,
+      bool* random_access,
+      int ptr_index,
+      long unsigned start_index,
+      long unsigned end_index,
+      First&& first,
+      Rest&&... rest)
+      {
+        set_constraints(
+          int{},
+          random_access,
+          ptr_index,
+          start_index,
+          end_index,
+          rest...);
+      }
+
+    // Sink, the current argument is not a container
+    template<typename Last>
+    static void set_constraints(
+      long sfinae,
+      bool* random_access,
+      int ptr_index,
+      long unsigned start_index,
+      long unsigned end_index,
+      Last&& last){}
+
+
 
     // Flushes every container which has not flushed since the last modifying
     // operation was performed.

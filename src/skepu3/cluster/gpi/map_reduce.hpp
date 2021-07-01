@@ -36,8 +36,37 @@ namespace skepu{
 
     long unsigned size;
 
+    // Marks every position in the tuple whether they contain a proxy type or not
+    // which is used to deduce constraint harshness
+    bool* arg_tup_rand_acc_pos;
+
     std::function<red_ret_t(map_ret_t, map_ret_t)> red_func;
     red_ret_t start_value;
+
+
+    template<typename Curr, typename... Rest>
+    void has_random_access(){
+      has_random_access(int{}, int{0}, std::tuple<Curr, Rest...>{});
+    }
+
+    template<typename Curr, typename... Rest>
+    auto has_random_access(int sfinae, int pos, std::tuple<Curr, Rest...>)
+      -> decltype((typename Curr::is_proxy_type){}, std::declval<void>())
+    {
+      arg_tup_rand_acc_pos[pos] = true;
+      has_random_access(sfinae, pos + 1, std::tuple<Rest...>{});
+    }
+
+    template<typename Curr, typename... Rest>
+    void has_random_access(long sfinae, int pos, std::tuple<Curr, Rest...>) {
+
+      has_random_access(int{}, pos + 1, std::tuple<Rest...>{});
+    }
+
+
+    void has_random_access(int sfinae, int pos, std::tuple<>) {
+    }
+
 
   public:
     MapReduce1D(
@@ -47,8 +76,12 @@ namespace skepu{
       map_func{m_func},
       red_func{r_func},
       start_value{},
-      size{0}
-      {};
+      size{0},
+      arg_tup_rand_acc_pos{(bool*) calloc(sizeof...(map_args), sizeof(bool))}
+      {
+        has_random_access<map_args...>();
+
+      };
 
       void setStartValue(red_ret_t val){
         start_value = val;
@@ -250,6 +283,26 @@ namespace skepu{
            }
            vclock[rank] = ++op_nr;
          }
+
+
+       int start;
+       if(std::is_same<arg_0_t, Index1D>::value ||
+         std::is_same<arg_0_t, Index2D>::value){
+         start = 1;
+       }
+       else{
+         start = 0;
+       }
+
+       // The type argument to matrix does not matter
+       Matrix<int>::set_constraints(
+         int{}, //sfinae,
+         arg_tup_rand_acc_pos,
+         start, // ptr index start
+         my_start_i,
+         my_end_i,
+         first,
+         args...);
 
         return loc_val;
 
@@ -453,6 +506,25 @@ namespace skepu{
            }
            first.vclock[first.rank] = ++first.op_nr;
          }
+
+       int start;
+       if(std::is_same<arg_0_t, Index1D>::value ||
+         std::is_same<arg_0_t, Index2D>::value){
+         start = 1;
+       }
+       else{
+         start = 0;
+       }
+
+       // The type argument to matrix does not matter
+       Matrix<int>::set_constraints(
+         int{}, //sfinae,
+         arg_tup_rand_acc_pos,
+         start, // ptr index start
+         first.start_i,
+         first.end_i,
+         first,
+         args...);
 
        return loc_val;
      }

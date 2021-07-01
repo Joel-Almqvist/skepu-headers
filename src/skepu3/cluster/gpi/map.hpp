@@ -24,7 +24,6 @@
 namespace skepu{
 
 
-
   template<int Arity, typename Ret, typename... Func_args>
   class Map1D{
   private:
@@ -32,7 +31,9 @@ namespace skepu{
 
     static const int nr_args = sizeof...(Func_args);
 
-    const bool uses_random_access;
+    // Marks every position in the tuple whether they contain a proxy type or not
+    // which is used to deduce constraint harshness
+    bool* arg_tup_rand_acc_pos;
 
     using arg_tup_t = typename std::tuple<Func_args...>;
 
@@ -40,8 +41,10 @@ namespace skepu{
   public:
     Map1D(std::function<Ret(Func_args...)> func) :
     func{func},
-    uses_random_access{has_random_access<Func_args...>()}
-    {};
+    arg_tup_rand_acc_pos{(bool*) calloc(sizeof...(Func_args), sizeof(bool))}
+    {
+      has_random_access<Func_args...>();
+    };
 
 
     // Dummy
@@ -124,28 +127,27 @@ namespace skepu{
 
 
     template<typename Curr, typename... Rest>
-    static bool has_random_access(){
-      return has_random_access(int{}, std::tuple<Curr, Rest...>{});
+    void has_random_access(){
+      has_random_access(int{}, int{0}, std::tuple<Curr, Rest...>{});
     }
 
 
     template<typename Curr, typename... Rest>
-    static auto has_random_access(int sfinae, std::tuple<Curr, Rest...>)
-      -> decltype((typename Curr::is_proxy_type){}, true)
+    auto has_random_access(int sfinae, int pos, std::tuple<Curr, Rest...>)
+      -> decltype((typename Curr::is_proxy_type){}, std::declval<void>())
     {
-      return true;
+      arg_tup_rand_acc_pos[pos] = true;
+      has_random_access(sfinae, pos + 1, std::tuple<Rest...>{});
     }
-
 
     template<typename Curr, typename... Rest>
-    static bool has_random_access(long sfinae, std::tuple<Curr, Rest...>) {
+    void has_random_access(long sfinae, int pos, std::tuple<Curr, Rest...>) {
 
-      return has_random_access(int{}, std::tuple<Rest...>{});
+      has_random_access(int{}, pos + 1, std::tuple<Rest...>{});
     }
 
 
-    static bool has_random_access(int sfinae, std::tuple<>) {
-      return false;
+    void has_random_access(int sfinae, int pos, std::tuple<>) {
     }
 
 
@@ -181,7 +183,6 @@ namespace skepu{
         static_assert(case1 || case2 || case3);
 
         using T = typename DestCont::value_type;
-
 
         dest.get_constraints(int{}, args...);
         dest.wait_for_constraints();
@@ -224,61 +225,22 @@ namespace skepu{
 
 
         // Add constraints
-        if(uses_random_access){
-          // Due to the random access we have constraints to all nodes
-          for(int i = 0; i < dest.nr_nodes; i++){
-            if(i == dest.rank){
-              continue;
-            }
-            dest.constraints[i] = dest.op_nr;
+          int start;
+          if(std::is_same<arg_0_t, Index1D>::value ||
+            std::is_same<arg_0_t, Index2D>::value){
+            start = 1;
           }
-        }
-
-        else{
-
-          long unsigned lowest_i;
-          long unsigned highest_i;
-
-          int lowest_rank;
-          int highest_rank;
-
-          // Calculate which nodes every remote is going to contact and create
-          // constraints to any node which will read from us.
-          for(int i = 0; i < dest.nr_nodes; i++){
-
-            if(i == dest.rank)
-              continue;
-
-            lowest_i = i * dest.norm_partition_size;
-
-            if(i != dest.nr_nodes - 1 ){
-              highest_i = (i + 1) * dest.norm_partition_size;
-            }
-            else{
-              highest_i = dest.global_size - 1;
-            }
-
-            lowest_rank = DestCont::find_rank_overlap(
-              int{},
-              i,
-              lowest_i,
-              dest.nr_nodes, // start the accumulator at impossible value
-              true,
-              dest, args...);
-
-            highest_rank = DestCont::find_rank_overlap(
-              int{},
-              i,
-              lowest_i,
-              -1, // start the accumulator at impossible value
-              false,
-              dest, args...);
-
-            if(lowest_rank <= dest.rank && dest.rank <= highest_rank){
-              dest.constraints[i] = dest.op_nr;
-            }
+          else{
+            start = 0;
           }
-        }
+
+          DestCont::set_constraints(
+            int{}, //sfinae,
+            arg_tup_rand_acc_pos,
+            start, // ptr index start
+            dest.start_i,
+            dest.end_i,
+            args...);
       }
   };
 
