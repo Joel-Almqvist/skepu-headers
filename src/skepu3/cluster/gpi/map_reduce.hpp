@@ -256,6 +256,9 @@ namespace skepu{
              vclock[rank] = ++op_nr;
          }
 
+
+         std::vector<int> wait_ranks{};
+
          // A distributed broadcast from node 0 to all the other.
          for(int i = 0; i < iterations; i++){
 
@@ -281,6 +284,13 @@ namespace skepu{
              gaspi_wait(queue, GASPI_BLOCK);
 
            }
+           else if(rank < prev_step && rank < step){
+             // This rank is the target of a read during this iteration
+
+             dest_rank = rank + prev_step;
+             wait_ranks.push_back(dest_rank);
+           }
+
            vclock[rank] = ++op_nr;
          }
 
@@ -303,6 +313,13 @@ namespace skepu{
          my_end_i,
          first,
          args...);
+
+         // Ensure that every remote has read our value as it may change after
+         // this function
+         for(int i = 0; i < wait_ranks.size(); i++){
+           Environment::wait_for_vclocks(op_nr, wait_ranks[i]);
+         }
+
 
         return loc_val;
 
@@ -474,6 +491,7 @@ namespace skepu{
            prev_step = pow(2, i);
 
            if(first.rank >= prev_step && first.rank < step){
+             // The node is reading
 
              dest_rank = first.rank - prev_step;
 
@@ -504,6 +522,14 @@ namespace skepu{
              gaspi_wait(first.queue, GASPI_BLOCK);
 
            }
+           else if(first.rank < prev_step && first.rank < step){
+             // This rank is the target of a read during this iteration
+
+             dest_rank = first.rank + prev_step;
+             first.wait_ranks.push_back(dest_rank);
+           }
+
+
            first.vclock[first.rank] = ++first.op_nr;
          }
 
@@ -525,6 +551,11 @@ namespace skepu{
          first.end_i,
          first,
          args...);
+
+
+         // To ensure that the remote partial sum is not overwritten we need to
+         // wait for all remotes to get it.
+         first.wait_for_vclocks(first.op_nr);
 
        return loc_val;
      }

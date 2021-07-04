@@ -161,6 +161,7 @@ namespace skepu{
 
       // A distributed broadcast from node 0 to all the other.
       for(int i = 0; i < iterations; i++){
+        // This rank is reading during this iteration
 
         step = pow(2, i + 1);
         prev_step = pow(2, i);
@@ -196,8 +197,20 @@ namespace skepu{
           gaspi_wait(cont.queue, GASPI_BLOCK);
 
         }
+
+        else if(cont.rank < prev_step && cont.rank < step){
+          // This rank is the target of a read during this iteration
+
+          dest_rank = cont.rank + prev_step;
+          cont.wait_ranks.push_back(dest_rank);
+        }
+
         cont.vclock[cont.rank] = ++cont.op_nr;
       }
+
+      // To ensure that the remote partial sum is not overwritten we need to
+      // wait for all remotes to get it.
+      cont.wait_for_vclocks(cont.op_nr);
 
       return loc_val;
     }
