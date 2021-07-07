@@ -58,7 +58,6 @@ namespace skepu{
         gaspi_proc_num(&nr_nodes);
         gaspi_queue_create(&queue, GASPI_BLOCK);
         segment_id = created_containers * nr_nodes + rank + 1;
-        //segment_id = created_containers;
 
         curr_containers++;
         created_containers++;
