@@ -39,13 +39,11 @@ int main(int argc, char *argv[])
 	auto taylor = skepu::MapReduce<0>(nth_term, plus);
 	taylor.setDefaultSize(N);
 
+	float res = taylor(x - 1);
 
 	auto end = std::chrono::system_clock::now();
 
 	double rtime = std::chrono::duration<double>{end - start}.count();
-
-	float res = taylor(x - 1);
-
 	std::cout << "Res: ln(" << x << ") = " << res <<
 	", my time = " << rtime <<
 	", N = " << N <<  std::endl;
