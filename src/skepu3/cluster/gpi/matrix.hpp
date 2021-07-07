@@ -93,7 +93,7 @@ namespace skepu{
 
     // The OP number of the remote when its container was fetched
     std::atomic_ulong* comm_buffer_state;
-    std::mutex* comm_buffer_locks;
+    std::mutex** comm_buffer_locks;
 
     // Indiciates which indeces this partition handles
     unsigned long start_i;
@@ -677,6 +677,7 @@ namespace skepu{
       }
     }
 
+
     int remote_rank = get_owner(i);
     unsigned long remote_size = remote_rank == nr_nodes - 1 ?
       last_partition_size : norm_partition_size;
@@ -690,11 +691,11 @@ namespace skepu{
       return comm_buffer[i];
     }
 
-    comm_buffer_locks[remote_rank].lock();
+    comm_buffer_locks[remote_rank]->lock();
 
     // Check if the work has been done while we were waiting on the lock
     if(comm_buffer_state[remote_rank] == op_nr){
-      comm_buffer_locks[remote_rank].unlock();
+      comm_buffer_locks[remote_rank]->unlock();
       return comm_buffer[i];
     }
 
@@ -703,6 +704,7 @@ namespace skepu{
       // Use the thread-safe wait provided by Environment
       Environment& env = Environment::get_instance();
       T* buffer = ((T*) comm_seg_ptr + norm_partition_size * remote_rank);
+
 
       env.wait_for_remote(
         remote_rank,
@@ -747,7 +749,7 @@ namespace skepu{
       gaspi_wait(queue, GASPI_BLOCK);
       comm_buffer_state[remote_rank] = op_nr;
 
-      comm_buffer_locks[remote_rank].unlock();
+      comm_buffer_locks[remote_rank]->unlock();
 
       return comm_buffer[i];
 
@@ -805,13 +807,19 @@ namespace skepu{
       norm_partition_comm_offset = sizeof(T) * norm_partition_size;
 
 
+      //Guarantee a communication buffer large enough for Reduce to work correctly
+      gaspi_size_t segment_size = std::max(
+        sizeof(T) * (local_size + global_size),
+        sizeof(T) * (local_size) + 2 * sizeof(unsigned long) * nr_nodes
+      );
+
       // Allocate enough memory to:
       // 1 - Store the local part of the container
       // 2 - Store remote values which we might read
       // 2.5 - Store remote values which we prefetch
       assert(gaspi_segment_create(
         segment_id,
-        gaspi_size_t{sizeof(T) * (local_size + global_size)},
+        segment_size,
         GASPI_GROUP_ALL,
         GASPI_BLOCK,
         GASPI_MEM_INITIALIZED
@@ -822,13 +830,13 @@ namespace skepu{
       comm_seg_ptr = ((T*) cont_seg_ptr) + local_size;
 
       local_buffer = (T*) malloc(local_size * sizeof(T));
+      comm_buffer_locks = (std::mutex**) malloc(sizeof(std::mutex*) * nr_nodes);
 
       comm_buffer_state = (std::atomic_ulong*) malloc(sizeof(std::atomic_ulong) * nr_nodes);
       for(int i  = 0; i < nr_nodes; i++){
         comm_buffer_state[i] = ULONG_MAX;
+        comm_buffer_locks[i] = new std::mutex{};
       }
-
-      comm_buffer_locks = new std::mutex[nr_nodes];
 
 
       last_mod_op = (unsigned long*) calloc(nr_nodes, sizeof(unsigned long));
@@ -1195,7 +1203,6 @@ namespace skepu{
       auto max = skepu::Reduce([](double a, double b){
         return a > b ? a : b;
       });
-
 
       return max(helper);
 

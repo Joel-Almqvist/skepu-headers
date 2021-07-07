@@ -33,7 +33,7 @@ private:
 
   bool init_called;
   bool mapred_seg_created;
-  std::mutex* rank_locks;
+  std::mutex** rank_locks;
 
 
   gaspi_rank_t rank;
@@ -118,6 +118,7 @@ private:
 
 
 public:
+
   static Environment& get_instance(){
     static Environment ins;
     return ins;
@@ -135,8 +136,11 @@ public:
 
       gaspi_proc_num(&nr_nodes);
       gaspi_proc_rank(&rank);
-      rank_locks = new std::mutex[nr_nodes];
+      rank_locks = (std::mutex**) malloc(sizeof(std::mutex*) * nr_nodes);
 
+      for(int i  = 0; i < nr_nodes; i++){
+        rank_locks[i] = new std::mutex{};
+      }
 
       assert(gaspi_segment_create(
         0,
@@ -223,7 +227,7 @@ public:
       return;
 
      // Lock to prevent other threads from reading the same remote rank's vclock
-     rank_locks[dest_rank].lock();
+     rank_locks[dest_rank]->lock();
      is_done = vclock[dest_rank] >= wait_for_op;
 
      // Check if the work has been done while we were sleeping
@@ -273,7 +277,7 @@ public:
       gaspi_notify_reset(seg_id, notify_id, &notify_val);
 
       // Lock to prevent concurrent writes to the vclock
-      rank_locks[rank].lock();
+      rank_locks[rank]->lock();
 
       for(int i = 0; i < nr_nodes; i++){
         vclock[i] = std::max(vclock[i], buffer[i]);
@@ -282,8 +286,8 @@ public:
            is_done = vclock[i] >= wait_for_op;
       }
 
-      rank_locks[rank].unlock();
-      rank_locks[dest_rank].unlock();
+      rank_locks[rank]->unlock();
+      rank_locks[dest_rank]->unlock();
 
       if(is_done){
         return;
