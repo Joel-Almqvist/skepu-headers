@@ -292,17 +292,22 @@ int main(int argc, char* argv[])
 	skepu::Matrix<size_t> iterations(height, width);
 
 	skepu::backend::Map<0, skepu_userfunction_skepu_skel_0mandelbroter_mandelbrot_f, bool, void> mandelbroter(false);
-	mandelbroter(iterations, height, width);
+
+	auto exec_time = skepu::benchmark::measureExecTime(
+		[&mandelbroter, &iterations, &height, &width](){
+		mandelbroter(iterations, height, width);
+
+	});
+
 	iterations.flush();
 
 	starpu_task_wait_for_all();
 	auto end = std::chrono::system_clock::now();
 	double rtime = std::chrono::duration<double>{end - start}.count();
 
-	printf("My time = %f, width = %lu, height = %lu\n",
-		rtime, width, height);
-
-
+	std::cout << "My time = " << exec_time.count() << ", old time = " << rtime
+		<< ", width = " << width << ", height = " <<
+		height << std::endl;
 
 	//if(!skepu::cluster::mpi_rank())
 	//if(iterations.single())
