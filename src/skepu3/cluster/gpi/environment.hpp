@@ -216,7 +216,7 @@ public:
      long unsigned* buffer,
      long unsigned seg_id,
      long unsigned loc_offset,
-     gaspi_queue_id_t queue
+     gaspi_queue_id_t& queue
      ){
 
     long unsigned* vclock = (long unsigned*) vclock_void;
