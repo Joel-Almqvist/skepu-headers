@@ -221,14 +221,19 @@ public:
 
     long unsigned* vclock = (long unsigned*) vclock_void;
 
-     bool is_done = vclock[dest_rank] >= wait_for_op;
+    rank_locks[rank]->lock();
+    bool is_done = vclock[dest_rank] >= wait_for_op;
+    rank_locks[rank]->unlock();
 
-     if(is_done)
+    if(is_done)
       return;
 
      // Lock to prevent other threads from reading the same remote rank's vclock
      rank_locks[dest_rank]->lock();
+
+     rank_locks[rank]->lock();
      is_done = vclock[dest_rank] >= wait_for_op;
+     rank_locks[rank]->unlock();
 
      // Check if the work has been done while we were sleeping
      if(is_done)
